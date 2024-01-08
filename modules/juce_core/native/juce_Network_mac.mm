@@ -1146,7 +1146,8 @@ private:
                     [req HTTPBody];
 
                     if (@available (macOS 10.10, *))
-                        connection = std::make_unique<URLConnectionState> (req, numRedirectsToFollow);
+                        // connection = std::make_unique<URLConnectionState> (req, numRedirectsToFollow);
+                        connection = std::make_unique<URLConnectionStatePreYosemite> (req, numRedirectsToFollow);
                    #if JUCE_MAC
                     else
                         connection = std::make_unique<URLConnectionStatePreYosemite> (req, numRedirectsToFollow);
