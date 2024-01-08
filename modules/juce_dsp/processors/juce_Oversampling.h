@@ -23,12 +23,10 @@
   ==============================================================================
 */
 
-namespace juce
-{
-namespace dsp
+namespace juce::dsp
 {
 
-//===============================================================================
+//==============================================================================
 /**
     A processor that performs multi-channel oversampling.
 
@@ -63,7 +61,7 @@ public:
         numFilterTypes
     };
 
-    //===============================================================================
+    //==============================================================================
     /** The default constructor.
 
         Note: This creates a "dummy" oversampling stage, which needs to be removed
@@ -97,7 +95,7 @@ public:
     /** Destructor. */
     ~Oversampling();
 
-    //===============================================================================
+    //==============================================================================
     /* Sets if this processor should add some fractional delay at the end of the signal
        path to ensure that the overall latency of the oversampling is an integer.
     */
@@ -133,7 +131,7 @@ public:
     /** Returns the current oversampling factor. */
     size_t getOversamplingFactor() const noexcept;
 
-    //===============================================================================
+    //==============================================================================
     /** Must be called before any processing, to set the buffer sizes of the internal
         buffers of the oversampling processing.
     */
@@ -158,7 +156,7 @@ public:
     */
     void processSamplesDown (AudioBlock<SampleType>& outputBlock) noexcept;
 
-    //===============================================================================
+    //==============================================================================
     /** Adds a new oversampling stage to the Oversampling class, multiplying the
         current oversampling factor by two. This is used with the default constructor
         to create custom oversampling chains, requiring a call to the
@@ -202,7 +200,7 @@ public:
     */
     void clearOversamplingStages();
 
-    //===============================================================================
+    //==============================================================================
     size_t factorOversampling = 1;
     size_t numChannels = 1;
 
@@ -211,19 +209,18 @@ public:
    #endif
 
 private:
-    //===============================================================================
+    //==============================================================================
     void updateDelayLine();
     SampleType getUncompensatedLatency() const noexcept;
 
-    //===============================================================================
+    //==============================================================================
     OwnedArray<OversamplingStage> stages;
     bool isReady = false, shouldUseIntegerLatency = false;
     DelayLine<SampleType, DelayLineInterpolationTypes::Thiran> delay { 8 };
     SampleType fractionalDelay = 0;
 
-    //===============================================================================
+    //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Oversampling)
 };
 
-} // namespace dsp
-} // namespace juce
+} // namespace juce::dsp
