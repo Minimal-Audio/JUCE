@@ -415,7 +415,7 @@ public:
         If no row exists at this position, the method will return -1.
         @see getComponentForRowNumber
     */
-    int getRowContainingPosition (int x, int y) const noexcept;
+    virtual int getRowContainingPosition (int x, int y) const noexcept;
 
     /** Finds a row index that would be the most suitable place to insert a new
         item for a given position.
@@ -430,7 +430,7 @@ public:
 
         @see getComponentForRowNumber
     */
-    int getInsertionIndexForPosition (int x, int y) const noexcept;
+    virtual int getInsertionIndexForPosition (int x, int y) const noexcept;
 
     /** Returns the position of one of the rows, relative to the top-left of
         the listbox.
@@ -438,7 +438,7 @@ public:
         This may be off-screen, and the range of the row number that is passed-in is
         not checked to see if it's a valid row.
     */
-    Rectangle<int> getRowPosition (int rowNumber,
+    virtual Rectangle<int> getRowPosition (int rowNumber,
                                    bool relativeToComponentTopLeft) const noexcept;
 
     /** Finds the row component for a given row in the list.
@@ -479,7 +479,7 @@ public:
         This is the number of whole rows which will fit on-screen, so the value might
         be more than the actual number of rows in the list.
     */
-    int getNumRowsOnScreen() const noexcept;
+    virtual int getNumRowsOnScreen() const noexcept;
 
     //==============================================================================
     /** A set of colour IDs to use to change the colour of various aspects of the label.
@@ -607,7 +607,9 @@ private:
     friend class ListViewport;
     friend class TableListBox;
     ListBoxModel* model = nullptr;
+protected:
     std::unique_ptr<ListViewport> viewport;
+private:
     std::unique_ptr<Component> headerComponent;
     std::unique_ptr<MouseListener> mouseMoveSelector;
     SparseSet<int> selected;
@@ -621,7 +623,9 @@ private:
    #endif
 
     void assignModelPtr (ListBoxModel*);
-    void checkModelPtrIsValid() const;
+protected:
+    virtual void checkModelPtrIsValid() const;
+private:
     std::unique_ptr<AccessibilityHandler> createAccessibilityHandler() override;
     bool hasAccessibleHeaderComponent() const;
     void selectRowInternal (int rowNumber, bool dontScrollToShowThisRow,
