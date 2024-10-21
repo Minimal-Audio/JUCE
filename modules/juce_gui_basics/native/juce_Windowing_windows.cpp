@@ -1410,10 +1410,7 @@ struct RenderContext
     virtual void dispatchDeferredRepaints() = 0;
     virtual void performAnyPendingRepaintsNow() = 0;
     virtual void onVBlank() = 0;
-    virtual void setResizing (bool) = 0;
-    virtual bool getResizing() const = 0;
     virtual void handleShowWindow() = 0;
-    virtual void setSize (int, int) = 0;
 
     /*  Gets a snapshot of whatever the render context is currently showing. */
     virtual Image createSnapshot() = 0;
@@ -1552,16 +1549,6 @@ public:
                  info.rcWindow.right - info.rcClient.right };
     }
 
-    void updateBorderSize()
-    {
-        if (renderContext == nullptr)
-            return;
-
-        RECT r;
-        GetClientRect (hwnd, &r);
-        renderContext->setSize (r.right - r.left, r.bottom - r.top);
-    }
-
     void setBounds (const Rectangle<int>& bounds, bool isNowFullScreen) override
     {
         // If we try to set new bounds while handling an existing position change,
@@ -1573,13 +1560,6 @@ public:
 
         if (isNowFullScreen != isFullScreen())
             setFullScreen (isNowFullScreen);
-
-        // This is more of a guess than a certainty, but if we've captured the mouse and we're also
-        // updating the bounds, there's a good chance we're in a client-initiated resize.
-        // The resizing flag will be unset by WM_CAPTURECHANGED.
-        if (GetCapture() == hwnd)
-            if (renderContext != nullptr)
-                renderContext->setResizing (true);
 
         const ScopedValueSetter<bool> scope (shouldIgnoreModalDismiss, true);
 
@@ -1633,7 +1613,6 @@ public:
 
         if (hasResized && isValidPeer (this))
         {
-            updateBorderSize();
             repaintNowIfTransparent();
         }
     }
@@ -1758,8 +1737,6 @@ public:
             if (constrainer != nullptr)
                 constrainer->resizeEnd();
         }
-
-        updateBorderSize();
     }
 
     bool isFullScreen() const override
@@ -1793,11 +1770,7 @@ public:
 
         const auto screenPos = convertLogicalScreenPointToPhysical (localPos + getScreenPosition(), hwnd);
 
-        if (trueIfInAChildWindow)
-            return getClientRectInScreen().contains (screenPos);
-
         auto w = WindowFromPoint (D2DUtilities::toPOINT (screenPos));
-
         return w == hwnd || (trueIfInAChildWindow && (IsChild (hwnd, w) != 0));
     }
 
@@ -2502,7 +2475,6 @@ private:
                 scaleFactor = getScaleFactorForWindow (hwnd);
 
             setMessageFilter();
-            updateBorderSize();
             checkForPointerAPI();
 
             // This is needed so that our plugin window gets notified of WM_SETTINGCHANGE messages
@@ -2864,9 +2836,6 @@ private:
 
             constrainerIsResizing = false;
         }
-
-        if (renderContext != nullptr && renderContext->getResizing())
-            renderContext->setResizing (false);
 
         if (isDragging)
             doMouseUp (getCurrentMousePos(), (WPARAM) 0, false);
@@ -3397,9 +3366,6 @@ private:
             r = D2DUtilities::toRECT (modifiedPhysicalBounds);
         }
 
-        if (renderContext != nullptr)
-            renderContext->setSize (r.right - r.left, r.bottom - r.top);
-
         return TRUE;
     }
 
@@ -3534,7 +3500,6 @@ private:
                 return true;
         }
 
-        updateBorderSize();
         handleMovedOrResized();
         updateCurrentMonitorAndRefreshVBlankDispatcher();
 
@@ -4031,17 +3996,8 @@ private:
 
                 break;
 
-            case WM_EXITSIZEMOVE:
-                if (renderContext != nullptr)
-                    renderContext->setResizing (false);
-
-                break;
-
             //==============================================================================
             case WM_SIZING:
-                if (renderContext != nullptr)
-                    renderContext->setResizing (true);
-
                 return handleSizeConstraining (*(RECT*) lParam, wParam);
 
             case WM_MOVING:
@@ -4304,17 +4260,33 @@ private:
                 switch (wParam)
                 {
                     case HTCLOSE:
-                        PostMessage (h, WM_CLOSE, 0, 0);
+                        if ((styleFlags & windowHasCloseButton) != 0 && ! sendInputAttemptWhenModalMessage())
+                        {
+                            if (hasTitleBar())
+                                PostMessage (h, WM_CLOSE, 0, 0);
+                            else
+                                component.windowControlClickedClose();
+                        }
                         return 0;
 
                     case HTMAXBUTTON:
                         if ((styleFlags & windowHasMaximiseButton) != 0 && ! sendInputAttemptWhenModalMessage())
-                            setFullScreen (! isFullScreen());
+                        {
+                            if (hasTitleBar())
+                                setFullScreen (! isFullScreen());
+                            else
+                                component.windowControlClickedMaximise();
+                        }
                         return 0;
 
                     case HTMINBUTTON:
                         if ((styleFlags & windowHasMinimiseButton) != 0 && ! sendInputAttemptWhenModalMessage())
-                            setMinimised (true);
+                        {
+                            if (hasTitleBar())
+                                setMinimised (true);
+                            else
+                                component.windowControlClickedMinimise();
+                        }
                         return 0;
                 }
                 break;
@@ -4820,11 +4792,8 @@ public:
              : createSnapshotOfNormalWindow();
     }
 
-    void setSize (int, int) override {}
     void onVBlank() override {}
 
-    void setResizing (bool x) override { resizing = x; }
-    bool getResizing() const override { return resizing; }
     void handleShowWindow() override {}
 
 private:
@@ -5063,7 +5032,6 @@ private:
     HWNDComponentPeer& peer;
     TemporaryImage offscreenImageGenerator;
     RectangleList<int> deferredRepaints;
-    bool resizing = false;
 };
 
 class D2DRenderContext : public RenderContext
@@ -5127,24 +5095,6 @@ public:
         handleDirect2DPaint();
     }
 
-    void setResizing (bool x) override
-    {
-        direct2DContext->setResizing (x);
-    }
-
-    bool getResizing() const override
-    {
-        return direct2DContext->getResizing();
-    }
-
-    void setSize (int w, int h) override
-    {
-        JUCE_TRACE_LOG_D2D_RESIZE (WM_NCCALCSIZE);
-
-        if (peer.getComponent().isVisible())
-            direct2DContext->setSize (w, h);
-    }
-
     void handleShowWindow() override
     {
         direct2DContext->handleShowWindow();
@@ -5157,9 +5107,6 @@ private:
         virtual ~WrappedD2DHwndContextBase() = default;
         virtual void addDeferredRepaint (Rectangle<int> area) = 0;
         virtual Image createSnapshot() const = 0;
-        virtual void setResizing (bool x) = 0;
-        virtual bool getResizing() const = 0;
-        virtual void setSize (int w, int h) = 0;
         virtual void handleShowWindow() = 0;
         virtual LowLevelGraphicsContext* startFrame (float dpiScale) = 0;
         virtual void endFrame() = 0;
@@ -5195,21 +5142,6 @@ private:
         Image createSnapshot() const override
         {
             return ctx.createSnapshot();
-        }
-
-        void setResizing (bool x) override
-        {
-            ctx.setResizing (x);
-        }
-
-        bool getResizing() const override
-        {
-            return ctx.getResizing();
-        }
-
-        void setSize (int w, int h) override
-        {
-            ctx.setSize (w, h);
         }
 
         void handleShowWindow() override
@@ -5384,10 +5316,6 @@ private:
             return renderer.getImage();
         }
 
-        void setResizing (bool x) override { resizing = x; }
-        bool getResizing() const override { return resizing; }
-
-        void setSize (int, int) override {}
         void handleShowWindow() override {}
 
         LowLevelGraphicsContext* startFrame (float scale) override
@@ -5479,7 +5407,6 @@ private:
 
         DxgiBitmapRenderer bitmapRenderer;
         RectangleList<int> deferredRepaints;
-        bool resizing = false;
     };
 
     void handleDirect2DPaint()

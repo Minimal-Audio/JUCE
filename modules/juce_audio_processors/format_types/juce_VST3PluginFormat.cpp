@@ -1334,8 +1334,10 @@ public:
         return handle.getFile();
     }
 
-    static Ptr getHandle (const File& f)
+    static Ptr getHandle (const String& modulePath)
     {
+        const auto f = getDLLFileFromBundle (modulePath);
+
         auto& bundles = getHandles();
 
         const auto iter = std::find_if (bundles.begin(), bundles.end(), [&] (Ptr x)
@@ -1356,6 +1358,30 @@ private:
         getHandles().insert (this);
     }
 
+    static File getDLLFileFromBundle (const String& bundlePath)
+    {
+       #if JUCE_LINUX || JUCE_BSD
+        const auto machineName = []() -> String
+        {
+            struct utsname unameData;
+            const auto res = uname (&unameData);
+
+            if (res != 0)
+                return {};
+
+            return unameData.machine;
+        }();
+
+        const File file { bundlePath };
+
+        return file.getChildFile ("Contents")
+                   .getChildFile (machineName + "-linux")
+                   .getChildFile (file.getFileNameWithoutExtension() + ".so");
+       #else
+        return File { bundlePath };
+       #endif
+    }
+
     static std::set<RefCountedDllHandle*>& getHandles()
     {
         static std::set<RefCountedDllHandle*> bundles;
@@ -1373,7 +1399,7 @@ public:
     static VST3ModuleHandle create (const File& pluginFile, const PluginDescription& desc)
     {
         VST3ModuleHandle result;
-        result.handle = RefCountedDllHandle::getHandle (pluginFile);
+        result.handle = RefCountedDllHandle::getHandle (pluginFile.getFullPathName());
 
         if (result.handle == nullptr)
             return {};
@@ -1637,14 +1663,17 @@ private:
     /*  Convert from the component's coordinate system to the hosted VST3's coordinate system. */
     ViewRect componentToVST3Rect (Rectangle<int> r) const
     {
-        const auto physical = localAreaToGlobal (r) * nativeScaleFactor * getDesktopScaleFactor();
+        const auto combinedScale = nativeScaleFactor * getDesktopScaleFactor();
+        const auto physical = (localAreaToGlobal (r.toFloat()) * combinedScale).toNearestInt();
         return { 0, 0, physical.getWidth(), physical.getHeight() };
     }
 
     /*  Convert from the hosted VST3's coordinate system to the component's coordinate system. */
     Rectangle<int> vst3ToComponentRect (const ViewRect& vr) const
     {
-        return getLocalArea (nullptr, Rectangle<int> { vr.right, vr.bottom } / (nativeScaleFactor * getDesktopScaleFactor()));
+        const auto combinedScale = nativeScaleFactor * getDesktopScaleFactor();
+        const auto floatRect = Rectangle { (float) vr.right, (float) vr.bottom } / combinedScale;
+        return getLocalArea (nullptr, floatRect).toNearestInt();
     }
 
     void componentMovedOrResized (bool, bool wasResized) override
