@@ -651,6 +651,7 @@ auto Direct2DPixelData::getPagesForContext (ComSmartPtr<ID2D1DeviceContext1> con
 }
 
 //==============================================================================
+/*
 ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage) const
 {
     SharedResourcePointer<DirectX> directX;
@@ -667,6 +668,7 @@ ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int widt
 
     return new Direct2DPixelData (format, width, height, clearImage);
 }
+*/
 
 //==============================================================================
 //==============================================================================
