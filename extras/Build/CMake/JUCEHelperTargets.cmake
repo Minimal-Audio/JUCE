@@ -73,8 +73,8 @@ elseif((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQU
         -Wswitch-enum
         -Wpedantic
         -Wdeprecated
-        # -Wfloat-equal
-        # -Wmissing-field-initializers
+        -Wfloat-equal
+        -Wmissing-field-initializers
         $<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:OBJCXX>>:
             -Wzero-as-null-pointer-constant
             -Wunused-private-field
@@ -104,8 +104,8 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         -Wredundant-decls
         -Wno-strict-overflow
         -Wshadow
-        # -Wfloat-equal
-        # -Wmissing-field-initializers
+        -Wfloat-equal
+        -Wmissing-field-initializers
         $<$<COMPILE_LANGUAGE:CXX>:
             -Woverloaded-virtual
             -Wreorder
@@ -140,9 +140,9 @@ if((CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") OR (CMAKE_CXX_COMPILER_FRONTEND_VARIA
         $<$<CONFIG:Release>:$<IF:$<STREQUAL:"${CMAKE_CXX_COMPILER_ID}","MSVC">,-GL,-flto>>)
     target_link_libraries(juce_recommended_lto_flags INTERFACE
         $<$<CONFIG:Release>:$<$<STREQUAL:"${CMAKE_CXX_COMPILER_ID}","MSVC">:-LTCG>>)
-elseif((NOT MINGW) AND ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-                     OR (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-                     OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")))
+elseif((CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+       OR (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+       OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
     target_compile_options(juce_recommended_lto_flags INTERFACE $<$<CONFIG:Release>:-flto>)
     target_link_libraries(juce_recommended_lto_flags INTERFACE $<$<CONFIG:Release>:-flto>)
     # Xcode 15.0 requires this flag to avoid a compiler bug

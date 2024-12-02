@@ -178,7 +178,7 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CoreGraphicsPixelData)
 };
 
-ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage) const
+ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage, Image::Permanence) const
 {
     return *new CoreGraphicsPixelData (format == Image::RGB ? Image::ARGB : format, width, height, clearImage);
 }
@@ -823,6 +823,11 @@ void CoreGraphicsContext::drawGlyphs (Span<const uint16_t> glyphs,
 {
     jassert (glyphs.size() == positions.size());
 
+    // This is an optimisation to avoid mutating the CGContext in the case that there's nothing
+    // to draw
+    if (positions.empty())
+        return;
+
     if (state->fillType.isColour())
     {
         const auto scale = state->font.getHorizontalScale();
@@ -836,16 +841,22 @@ void CoreGraphicsContext::drawGlyphs (Span<const uint16_t> glyphs,
             const auto slant = hb_font_get_synthetic_slant (hbFont.get());
 
             state->textMatrix = CGAffineTransformMake (scale, 0, slant * scale, 1.0f, 0, 0);
-            CGContextSetTextMatrix (context.get(), state->textMatrix);
             state->inverseTextMatrix = CGAffineTransformInvert (state->textMatrix);
         }
+
+        // The current text matrix needs to be adjusted in order to ensure that the requested
+        // positions aren't changed
+        CGContextSetTextMatrix (context.get(), state->textMatrix);
 
         ScopedCGContextState scopedState (context.get());
         flip();
         applyTransform (AffineTransform::scale (1.0f, -1.0f).followedBy (transform));
 
         CopyableHeapBlock<CGPoint> pos (glyphs.size());
-        std::transform (positions.begin(), positions.end(), pos.begin(), [scale] (const auto& p) { return CGPointMake (p.x / scale, -p.y); });
+        std::transform (positions.begin(), positions.end(), pos.begin(), [this] (const auto& p)
+        {
+            return CGPointApplyAffineTransform (CGPointMake (p.x, -p.y), state->inverseTextMatrix);
+        });
 
         CTFontDrawGlyphs (state->fontRef.get(), glyphs.data(), pos.data(), glyphs.size(), context.get());
         return;
@@ -856,6 +867,10 @@ void CoreGraphicsContext::drawGlyphs (Span<const uint16_t> glyphs,
         Path p;
         auto& f = state->font;
         f.getTypefacePtr()->getOutlineForGlyph (f.getMetricsKind(), glyph, p);
+
+        if (p.isEmpty())
+            continue;
+
         const auto scale = f.getHeight();
         fillPath (p, AffineTransform::scale (scale * f.getHorizontalScale(), scale).translated (positions[index]).followedBy (transform));
     }

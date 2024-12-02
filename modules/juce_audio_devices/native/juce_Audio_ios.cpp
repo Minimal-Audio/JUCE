@@ -426,13 +426,11 @@ struct iOSAudioIODevice::Pimpl final : public AsyncUpdater
         // a call to setActive, so we also need to wait for the first audio callback.
         // This will be slow!
         // https://developer.apple.com/library/archive/qa/qa1631/_index.html
-        if (@available (ios 18, *))
-            setAudioSessionActive (false);
+        setAudioSessionActive (false);
 
         JUCE_NSERROR_CHECK ([session setPreferredIOBufferDuration: bufferDuration error: &error]);
 
-        if (@available (ios 18, *))
-            setAudioSessionActive (true);
+        setAudioSessionActive (true);
 
         return getBufferSize (currentSampleRate);
     }
@@ -551,6 +549,13 @@ struct iOSAudioIODevice::Pimpl final : public AsyncUpdater
         JUCE_IOS_AUDIO_LOG ("Updating hardware info");
 
         updateAvailableSampleRates();
+
+        // The sample rate and buffer size may have been affected by
+        // updateAvailableSampleRates(), so try restoring the last good
+        // sample rate
+        sampleRate = trySampleRate (sampleRate);
+        bufferSize = getBufferSize (sampleRate);
+
         updateAvailableBufferSizes();
 
         if (deviceType != nullptr)

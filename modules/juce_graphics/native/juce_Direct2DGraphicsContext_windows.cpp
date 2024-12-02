@@ -35,10 +35,6 @@
 namespace juce
 {
 
-#if JUCE_DIRECT2D_METRICS
-JUCE_IMPLEMENT_SINGLETON (Direct2DMetricsHub)
-#endif
-
 struct ScopedBlendCopy
 {
     explicit ScopedBlendCopy (ComSmartPtr<ID2D1DeviceContext1> c)
@@ -369,15 +365,23 @@ public:
         }
         else if (fillType.isGradient())
         {
+            SharedResourcePointer<DirectX> directX;
+
             if (fillType.gradient->isRadial)
             {
-                radialGradient = deviceResources.radialGradientCache.get (*fillType.gradient, context, owner.metrics.get());
-                currentBrush = radialGradient;
+                if (auto adapter = deviceResources.findAdapter(directX->adapters, context))
+                {
+                    radialGradient = adapter->radialGradientCache.get(*fillType.gradient, context, owner.metrics.get());
+                    currentBrush = radialGradient;
+                }
             }
             else
             {
-                linearGradient = deviceResources.linearGradientCache.get (*fillType.gradient, context, owner.metrics.get());
-                currentBrush = linearGradient;
+                if (auto adapter = deviceResources.findAdapter(directX->adapters, context))
+                {
+                    linearGradient = adapter->linearGradientCache.get(*fillType.gradient, context, owner.metrics.get());
+                    currentBrush = linearGradient;
+                }
             }
         }
 
@@ -444,6 +448,9 @@ public:
 
             if (fillType.gradient->isRadial)
             {
+                if (!radialGradient)
+                    return { colourBrush };
+
                 const auto radius = p2.getDistanceFrom (p1);
                 radialGradient->SetRadiusX (radius);
                 radialGradient->SetRadiusY (radius);
@@ -451,6 +458,9 @@ public:
             }
             else
             {
+                if (!linearGradient)
+                    return { colourBrush };
+
                 linearGradient->SetStartPoint ({ p1.x, p1.y });
                 linearGradient->SetEndPoint ({ p2.x, p2.y });
             }
@@ -1343,6 +1353,8 @@ void Direct2DGraphicsContext::fillRect (const Rectangle<int>& r, bool replaceExi
 
 void Direct2DGraphicsContext::fillRect (const Rectangle<float>& r)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, fillRectTime)
+
     if (r.isEmpty())
         return;
 
@@ -1357,6 +1369,8 @@ void Direct2DGraphicsContext::fillRect (const Rectangle<float>& r)
 
 void Direct2DGraphicsContext::fillRectList (const RectangleList<float>& list)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, fillRectListTime);
+
     if (getPimpl()->fillSpriteBatch (list))
         return;
 
@@ -1372,6 +1386,8 @@ void Direct2DGraphicsContext::fillRectList (const RectangleList<float>& list)
 
 void Direct2DGraphicsContext::drawRect (const Rectangle<float>& r, float lineThickness)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, drawRectTime);
+
     auto draw = [&] (Rectangle<float> rect, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         // ID2D1DeviceContext::DrawRectangle centers the stroke around the edges of the specified rectangle, but
@@ -1551,6 +1567,8 @@ void Direct2DGraphicsContext::drawLine (const Line<float>& line)
 
 void Direct2DGraphicsContext::drawLineWithThickness (const Line<float>& line, float lineThickness)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, drawLineTime);
+
     auto draw = [&] (Line<float> l, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         if (brush == nullptr)
@@ -1590,6 +1608,9 @@ float Direct2DGraphicsContext::getPhysicalPixelScaleFactor() const
 
 void Direct2DGraphicsContext::drawRoundedRectangle (const Rectangle<float>& area, float cornerSize, float lineThickness)
 {
+
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, drawRoundedRectangleTime);
+
     auto draw = [&] (Rectangle<float> rect, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         if (brush == nullptr)
@@ -1604,6 +1625,8 @@ void Direct2DGraphicsContext::drawRoundedRectangle (const Rectangle<float>& area
 
 void Direct2DGraphicsContext::fillRoundedRectangle (const Rectangle<float>& area, float cornerSize)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, fillRoundedRectangleTime);
+
     auto fill = [&] (Rectangle<float> rect, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         if (brush == nullptr)
@@ -1618,6 +1641,8 @@ void Direct2DGraphicsContext::fillRoundedRectangle (const Rectangle<float>& area
 
 void Direct2DGraphicsContext::drawEllipse (const Rectangle<float>& area, float lineThickness)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, drawEllipseTime);
+
     auto draw = [&] (Rectangle<float> rect, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         if (brush == nullptr)
@@ -1633,6 +1658,8 @@ void Direct2DGraphicsContext::drawEllipse (const Rectangle<float>& area, float l
 
 void Direct2DGraphicsContext::fillEllipse (const Rectangle<float>& area)
 {
+    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(metrics, fillEllipseTime);
+
     auto fill = [&] (Rectangle<float> rect, ComSmartPtr<ID2D1DeviceContext1> deviceContext, ComSmartPtr<ID2D1Brush> brush)
     {
         if (brush == nullptr)

@@ -45,23 +45,23 @@ struct Direct2DMetrics : public ReferenceCountedObject
 
 #define DIRECT2D_PAINT_STAT_LIST                          \
     DIRECT2D_PAINT_STAT (messageThreadPaintDuration)      \
-    DIRECT2D_PAINT_STAT (swapChainThreadTime)             \
     DIRECT2D_PAINT_STAT (frameInterval)                   \
     DIRECT2D_PAINT_STAT (endDrawDuration)                 \
     DIRECT2D_PAINT_STAT (present1Duration)                \
     DIRECT2D_PAINT_STAT (createGeometryTime)              \
     DIRECT2D_PAINT_STAT (drawGeometryTime)                \
     DIRECT2D_PAINT_STAT (fillGeometryTime)                \
-    DIRECT2D_PAINT_STAT (createFilledGRTime)              \
-    DIRECT2D_PAINT_STAT (createStrokedGRTime)             \
-    DIRECT2D_PAINT_STAT (drawGRTime)                      \
     DIRECT2D_PAINT_STAT (createGradientTime)              \
     DIRECT2D_PAINT_STAT (pushAliasedAxisAlignedLayerTime) \
     DIRECT2D_PAINT_STAT (pushGeometryLayerTime)           \
-    DIRECT2D_PAINT_STAT (fillTranslatedRectTime)          \
-    DIRECT2D_PAINT_STAT (fillAxisAlignedRectTime)         \
-    DIRECT2D_PAINT_STAT (fillTransformedRectTime)         \
+    DIRECT2D_PAINT_STAT (fillRectTime)                    \
+    DIRECT2D_PAINT_STAT (drawRectTime)                    \
     DIRECT2D_PAINT_STAT (fillRectListTime)                \
+    DIRECT2D_PAINT_STAT (drawLineTime)                    \
+    DIRECT2D_PAINT_STAT (drawRoundedRectangleTime)        \
+    DIRECT2D_PAINT_STAT (fillRoundedRectangleTime)        \
+    DIRECT2D_PAINT_STAT (drawEllipseTime)                 \
+    DIRECT2D_PAINT_STAT (fillEllipseTime)                 \
     DIRECT2D_PAINT_STAT (drawImageTime)                   \
     DIRECT2D_PAINT_STAT (spriteBatchTime)                 \
     DIRECT2D_PAINT_STAT (spriteBatchSetupTime)            \
@@ -235,7 +235,10 @@ public:
     enum
     {
         getValuesRequest,
-        resetValuesRequest
+        resetValuesRequest,
+        getWindowHandlesRequest,
+
+        imageContextMetricsHandle = 0xccbbaa99
     };
 
     struct MetricValues
@@ -248,6 +251,12 @@ public:
         double stdDev;
     };
 
+    struct Request
+    {
+        int requestType;
+        void* windowHandle;
+    };
+
     struct GetValuesResponse
     {
         int responseType;
@@ -255,12 +264,19 @@ public:
         MetricValues values[Direct2DMetrics::numStats];
     };
 
+    struct GetWindowHandlesResponse
+    {
+        int responseType;
+        static size_t constexpr maxNumWindowHandles = 64;
+        void* windowHandles[maxNumWindowHandles];
+    };
+
     CriticalSection lock;
     Direct2DMetrics::Ptr imageContextMetrics;
 
     static constexpr int magicNumber = 0xd2d1;
 
-    JUCE_DECLARE_SINGLETON (Direct2DMetricsHub, false)
+    JUCE_DECLARE_SINGLETON_INLINE (Direct2DMetricsHub, false)
 
 private:
     static String getProcessString() noexcept;
@@ -273,7 +289,7 @@ private:
             : InterprocessConnection (false, magicNumber),
               owner (ownerIn)
         {
-            createPipe ("JUCEDirect2DMetricsHub:" + owner.getProcessString(), -1, true);
+            createPipe ("JUCEDirect2DMetricsHub_" + owner.getProcessString(), -1, true);
         }
 
         ~HubPipeServer() override
@@ -296,7 +312,6 @@ private:
 
     HubPipeServer hubPipeServer { *this };
     ReferenceCountedArray<Direct2DMetrics> metricsArray;
-    Direct2DMetrics* lastMetrics = nullptr;
 };
 
 } // namespace juce

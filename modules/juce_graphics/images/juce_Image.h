@@ -77,6 +77,13 @@ public:
         SingleChannel       /**<< each pixel is a 1-byte alpha channel value. */
     };
 
+    enum Permanence
+    {
+        permanent,    // the image data will never be deleted
+        disposable    // the image data may be arbitrarily deleted by the GPU
+    };
+
+
     //==============================================================================
     /** Creates a null image. */
     Image() noexcept;
@@ -97,7 +104,7 @@ public:
                                 or transparent black (if it's ARGB). If false, the image may contain
                                 junk initially, so you need to make sure you overwrite it thoroughly.
     */
-    Image (PixelFormat format, int imageWidth, int imageHeight, bool clearImage);
+    Image (PixelFormat format, int imageWidth, int imageHeight, bool clearImage, Permanence requestedPermanence = permanent);
 
     /** Creates an image with a specified size and format.
 
@@ -114,7 +121,7 @@ public:
         @param type             the type of image - this lets you specify the internal format that will
                                 be used to allocate and manage the image data.
     */
-    Image (PixelFormat format, int imageWidth, int imageHeight, bool clearImage, const ImageType& type);
+    Image (PixelFormat format, int imageWidth, int imageHeight, bool clearImage, const ImageType& type, Permanence requestedPermanence = permanent);
 
     /** Creates a shared reference to another image.
 
@@ -189,6 +196,11 @@ public:
 
     /** True if the image contains an alpha-channel. */
     bool hasAlphaChannel() const noexcept;
+
+    //==============================================================================
+
+    bool isPermanent() const noexcept;
+    bool isDisposable() const noexcept;
 
     //==============================================================================
     /** Clears a section of the image with a given colour.
@@ -454,7 +466,7 @@ private:
 class JUCE_API  ImagePixelData  : public ReferenceCountedObject
 {
 public:
-    ImagePixelData (Image::PixelFormat, int width, int height);
+    ImagePixelData (Image::PixelFormat, int width, int height, Image::Permanence requestedPermanence = Image::Permanence::permanent);
     ~ImagePixelData() override;
 
     using Ptr = ReferenceCountedObjectPtr<ImagePixelData>;
@@ -463,6 +475,14 @@ public:
     virtual std::unique_ptr<LowLevelGraphicsContext> createLowLevelContext() = 0;
     /** Creates a copy of this image. */
     virtual Ptr clone() = 0;
+    /** Returns a version of this object with a different image format.
+
+    A new ImagePixelData is returned which has been converted to the specified format.
+
+    Note that if the new format is no different to the current one, this will just return
+    a reference to the original ImagePixelData, and won't actually create a copy.
+    */
+    virtual Ptr convertedToFormat(Image::PixelFormat newFormat, Image::Permanence permanence);
     /** Creates an instance of the type of this image. */
     virtual std::unique_ptr<ImageType> createType() const = 0;
     /** Initialises a BitmapData object. */
@@ -472,6 +492,25 @@ public:
         can internally depend on another ImagePixelData via it's member variables.
     */
     virtual int getSharedCount() const noexcept;
+
+    /** Copies a section of the image to somewhere else within itself. */
+    virtual void moveImageSection(int destX, int destY,
+        int sourceX, int sourceY,
+        int width, int height);
+
+    /** Changes the overall opacity of the image.
+
+    This will multiply the alpha value of each pixel in the image by the given
+    amount (limiting the resulting alpha values between 0 and 255). This allows
+    you to make an image more or less transparent.
+
+    If the image doesn't have an alpha channel, this won't have any effect.
+    */
+    virtual void multiplyAllAlphas(float amountToMultiplyBy);
+
+    /** Changes all the colours to be shades of grey, based on their current luminosity.
+        */
+    virtual void desaturate();
 
     /** Applies a native blur effect to this image, if available.
         This blur applies to all channels of the input image. It may be more expensive to
@@ -485,22 +524,12 @@ public:
     */
     virtual void applyGaussianBlurEffect (float radius, Image& result);
 
-    /** Applies a native blur effect to this image, if available.
-        This is intended for blurring single-channel images, which is useful when rendering drop
-        shadows. This is implemented as several box-blurs in series. The results should be visually
-        similar to a Gaussian blur, but less accurate.
-
-        Implementations should attempt to re-use the storage provided in the result out-parameter
-        when possible.
-
-        If native blurs are unsupported, or if creating a blur fails for any other reason,
-        the result out-parameter will be reset to an invalid image.
-    */
-    virtual void applySingleChannelBoxBlurEffect (int radius, Image& result);
+    virtual void applyShadowEffect (int radius, Image& result);
 
     /** The pixel format of the image data. */
     const Image::PixelFormat pixelFormat;
     const int width, height;
+    const Image::Permanence permanence = Image::Permanence::permanent;
 
     /** User-defined settings that are attached to this image.
         @see Image::getProperties().
@@ -541,7 +570,7 @@ public:
     virtual ~ImageType();
 
     /** Creates a new image of this type, and the specified parameters. */
-    virtual ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool shouldClearImage) const = 0;
+    virtual ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool shouldClearImage, Image::Permanence requestedPermanence = Image::Permanence::permanent) const = 0;
 
     /** Must return a unique number to identify this type. */
     virtual int getTypeID() const = 0;
@@ -566,7 +595,7 @@ public:
     SoftwareImageType();
     ~SoftwareImageType() override;
 
-    ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool clearImage) const override;
+    ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool clearImage, Image::Permanence requestedPermanence = Image::Permanence::permanent) const override;
     int getTypeID() const override;
 };
 
@@ -584,7 +613,7 @@ public:
     NativeImageType();
     ~NativeImageType() override;
 
-    ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool clearImage) const override;
+    ImagePixelData::Ptr create (Image::PixelFormat, int width, int height, bool clearImage, Image::Permanence requestedPermanence = Image::Permanence::permanent) const override;
     int getTypeID() const override;
 };
 
@@ -625,6 +654,8 @@ struct ImageEffects
         Otherwise, new storage may be allocated for the blurred image.
     */
     static void applySingleChannelBoxBlurEffect (int radius, const Image& input, Image& result);
+
+    static void applyShadowEffect(int radius, const Image& input, Image& result);
 };
 
 } // namespace juce

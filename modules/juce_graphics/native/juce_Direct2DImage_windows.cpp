@@ -177,9 +177,16 @@ static bool readFromDirect2DBitmap (ComSmartPtr<ID2D1DeviceContext1> context,
             struct Releaser : public Image::BitmapData::BitmapDataReleaser
             {
                 explicit Releaser (ComSmartPtr<ID2D1Bitmap1> toUnmapIn) : toUnmap (toUnmapIn) {}
-                ~Releaser() override { toUnmap->Unmap(); }
+                ~Releaser() override
+                {
+                    JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(Direct2DMetricsHub::getInstance()->imageContextMetrics, unmapBitmapTime);
+
+                    toUnmap->Unmap();
+                }
                 ComSmartPtr<ID2D1Bitmap1> toUnmap;
             };
+
+            JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME(Direct2DMetricsHub::getInstance()->imageContextMetrics, mapBitmapTime);
 
             D2D1_MAPPED_RECT mapped{};
             bitmap->Map (D2D1_MAP_OPTIONS_READ, &mapped);
@@ -275,8 +282,8 @@ auto Direct2DPixelDataPages::getPages() -> Span<const Page>
 }
 
 //==============================================================================
-Direct2DPixelData::Direct2DPixelData (ImagePixelData::Ptr ptr, State initialState)
-    : ImagePixelData { ptr->pixelFormat, ptr->width, ptr->height },
+Direct2DPixelData::Direct2DPixelData (ImagePixelData::Ptr ptr, State initialState, Image::Permanence permanence)
+    : ImagePixelData { ptr->pixelFormat, ptr->width, ptr->height, permanence },
       backingData (ptr),
       state (initialState)
 {
@@ -285,22 +292,114 @@ Direct2DPixelData::Direct2DPixelData (ImagePixelData::Ptr ptr, State initialStat
 }
 
 Direct2DPixelData::Direct2DPixelData (ComSmartPtr<ID2D1DeviceContext1> context,
-                                      ComSmartPtr<ID2D1Bitmap1> page)
-    : Direct2DPixelData (readFromDirect2DBitmap (context, page), State::drawn)
+    ComSmartPtr<ID2D1Bitmap1> page,
+    Image::Permanence permanence)
+    : Direct2DPixelData (readFromDirect2DBitmap (context, page), State::drawn, permanence)
 {
     if (const auto device1 = getDeviceForContext (context))
         pagesForDevice.emplace (device1, Direct2DPixelDataPages { page, backingData });
 }
 
-Direct2DPixelData::Direct2DPixelData (Image::PixelFormat formatToUse, int w, int h, bool clearIn)
-    : Direct2DPixelData { SoftwareImageType{}.create (formatToUse, w, h, clearIn),
-                          clearIn ? State::initiallyCleared : State::initiallyUndefined }
+Direct2DPixelData::Direct2DPixelData (Image::PixelFormat formatToUse, int w, int h, bool clearIn, Image::Permanence permanence)
+    : Direct2DPixelData
+     {
+        SoftwareImageType{}.create (formatToUse, w, h, clearIn),
+        clearIn ? State::initiallyCleared : State::initiallyUndefined,
+        permanence
+     }
 {
 }
 
 Direct2DPixelData::~Direct2DPixelData()
 {
     directX->adapters.removeListener (*this);
+}
+
+ImagePixelData::Ptr Direct2DPixelData::clone()
+{
+    if (permanence == Image::Permanence::disposable)
+    {
+        const auto adapter = directX->adapters.getDefaultAdapter();
+        if (adapter)
+        {
+            const auto context = Direct2DDeviceContext::create(adapter);
+            const auto maxSize = (int)context->GetMaximumBitmapSize();
+            if (context && width <= maxSize && height <= maxSize)
+            {
+                auto clonePixelData = new Direct2DPixelData{ pixelFormat, width, height, false, Image::Permanence::disposable };
+                auto sourceBitmap = getFirstPageForContext(context);
+                auto destinationBitmap = clonePixelData->getFirstPageForContext(context);
+                if (sourceBitmap && destinationBitmap)
+                {
+                    destinationBitmap->CopyFromBitmap(nullptr, sourceBitmap, nullptr);
+                    return clonePixelData;
+                }
+            }
+        }
+    }
+
+    return new Direct2DPixelData{ backingData->clone(), State::drawn, permanence };
+}
+
+ImagePixelData::Ptr Direct2DPixelData::convertedToFormat(Image::PixelFormat newPixelFormat, Image::Permanence newPermanence)
+{
+    if (newPermanence == Image::Permanence::disposable)
+    {
+        const auto adapter = directX->adapters.getDefaultAdapter();
+        if (adapter)
+        {
+            const auto context = Direct2DDeviceContext::create(adapter);
+            const auto maxSize = (int)context->GetMaximumBitmapSize();
+            if (context && width <= maxSize && height <= maxSize)
+            {
+                auto destinationPixelData = new Direct2DPixelData{ newPixelFormat, width, height, false, newPermanence };
+                auto sourceBitmap = getFirstPageForContext(context);
+                auto destinationBitmap = destinationPixelData->getFirstPageForContext(context);
+                if (sourceBitmap && destinationBitmap)
+                {
+                    context->SetTarget(destinationBitmap);
+                    context->BeginDraw();
+
+                    if (pixelFormat == Image::SingleChannel)
+                    {
+                        //
+                        // If the source image is single-channel,
+                        // fill the destination with opaque white with the source image as an alpha mask
+                        //
+                        ComSmartPtr<ID2D1BitmapBrush> brush;
+                        D2D1_BRUSH_PROPERTIES brushProps = { 1.0f, D2D1::IdentityMatrix()};
+
+                        auto bitmapBrushProps = D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_WRAP, D2D1_EXTEND_MODE_WRAP);
+                        [[maybe_unused]] auto hr = context->CreateBitmapBrush(sourceBitmap, bitmapBrushProps, brushProps, brush.resetAndGetPointerAddress());
+                        jassert(SUCCEEDED(hr));
+
+                        if (brush != nullptr)
+                        {
+                            auto layerParams = D2D1::LayerParameters1(D2D1::InfiniteRect());
+                            layerParams.opacityBrush = brush;
+                            context->PushLayer(&layerParams, nullptr);
+
+                            context->Clear(D2D1_COLOR_F{ 1.0f, 1.0f, 1.0f, 1.0f });
+
+                            context->PopLayer();
+                        }
+                    }
+                    else
+                    {
+                        context->Clear(D2D1_COLOR_F{ 0.0f, 0.0f, 0.0f, 0.0f });
+                        context->DrawImage(sourceBitmap);
+                    }
+
+                    [[maybe_unused]] auto hr = context->EndDraw();
+                    jassert(SUCCEEDED(hr));
+
+                    return destinationPixelData;
+                }
+            }
+        }   
+    }
+
+    return ImagePixelData::convertedToFormat(newPixelFormat, Image::permanent);
 }
 
 auto Direct2DPixelData::getIteratorForContext (ComSmartPtr<ID2D1DeviceContext1> context)
@@ -369,6 +468,7 @@ std::unique_ptr<LowLevelGraphicsContext> Direct2DPixelData::createLowLevelContex
         struct InertContext : public LowLevelGraphicsContext
         {
             bool isVectorDevice() const override { return false; }
+            std::unique_ptr<ImageType> getPreferredImageType() const override { return {}; }
             void setOrigin (Point<int>) override {}
             void addTransform (const AffineTransform&) override {}
             float getPhysicalPixelScaleFactor() const override { return 1.0f; }
@@ -467,7 +567,10 @@ std::unique_ptr<LowLevelGraphicsContext> Direct2DPixelData::createLowLevelContex
                 return;
 
             endFrame();
-            readFromDirect2DBitmap (storedContext, storedTarget, backup);
+
+            if (self->permanence == Image::Permanence::permanent)
+                readFromDirect2DBitmap (storedContext, storedTarget, backup);
+
             self->state = State::drawn;
         }
 
@@ -521,128 +624,159 @@ void Direct2DPixelData::initialiseBitmapData (Image::BitmapData& bitmap,
     bitmap.dataReleaser = std::make_unique<Releaser> (std::move (bitmap.dataReleaser), this);
 }
 
+void Direct2DPixelData::moveImageSection(int dx, int dy,
+    int sx, int sy,
+    int w, int h)
+{
+    if (permanence == Image::Permanence::disposable)
+    {
+        const auto adapter = directX->adapters.getDefaultAdapter();
+        if (adapter)
+        {
+            const auto context = Direct2DDeviceContext::create(adapter);
+            const auto maxSize = (int)context->GetMaximumBitmapSize();
+            if (context && maxSize >= width && maxSize >= height)
+            {
+                Rectangle<int> sourceRect{ sx, sy, w, h };
+                Rectangle<int> destRect{ dx, dy, w, h };
+                sourceRect = sourceRect.getIntersection(Rectangle<int>{ width, height });
+                destRect = destRect.getIntersection(Rectangle<int>{ width, height });
+                if (!sourceRect.isEmpty() && !destRect.isEmpty())
+                {
+                    auto originalBitmap = getFirstPageForContext(context);
+                    auto tempBitmap = Direct2DBitmap::createBitmap(context,
+                        pixelFormat,
+                        D2D1::SizeU((UINT32)w, (UINT32)h),
+                        D2D1_BITMAP_OPTIONS_NONE);
+
+                    auto sourceRectU = D2DUtilities::toRECT_U(sourceRect);
+                    tempBitmap->CopyFromBitmap(nullptr, originalBitmap, &sourceRectU);
+                    auto destPoint = D2DUtilities::toPOINT_2U(destRect.getTopLeft());
+                    originalBitmap->CopyFromBitmap(&destPoint, tempBitmap, nullptr);
+
+                    return;
+                }
+            }
+        }
+    }
+
+    ImagePixelData::moveImageSection(dx, dy, sx, sy, w, h);
+}
+
+void Direct2DPixelData::multiplyAllAlphas(float amountToMultiplyBy)
+{
+    if (pixelFormat == Image::ARGB || pixelFormat == Image::SingleChannel)
+        if (permanence == Image::Permanence::disposable)
+            if (applyDirect2DEffect(CLSID_D2D1Opacity, {}, { width, height },
+                [=](ComSmartPtr<ID2D1Effect> effect)
+                {
+                    effect->SetValue(D2D1_OPACITY_PROP_OPACITY, amountToMultiplyBy);
+                }))
+                return;
+
+    ImagePixelData::multiplyAllAlphas(amountToMultiplyBy);
+}
+
+void Direct2DPixelData::desaturate()
+{
+    if (permanence == Image::Permanence::disposable)
+        if ( applyDirect2DEffect(CLSID_D2D1Grayscale, {}, { width, height }))
+            return;
+
+    ImagePixelData::desaturate();
+}
+
+bool Direct2DPixelData::applyDirect2DEffect(GUID const& effectID,
+    Direct2DPixelData::Ptr outputPixelData,
+    Rectangle<int> outputArea,
+    std::optional<std::function<void(ComSmartPtr<ID2D1Effect>)>> configureEffect)
+{
+    const auto adapter = directX->adapters.getDefaultAdapter();
+    if (adapter == nullptr)
+        return false;
+
+    const auto context = Direct2DDeviceContext::create(adapter);
+    const auto maxSize = (int)context->GetMaximumBitmapSize();
+    if (context == nullptr || maxSize < width || maxSize < height)
+        return false;
+
+    ComSmartPtr<ID2D1Effect> effect;
+    if (const auto hr = context->CreateEffect(effectID, effect.resetAndGetPointerAddress()); FAILED(hr))
+        return false;
+
+    if (configureEffect.has_value())
+        (*configureEffect)(effect);
+
+    auto sourceBitmap = getFirstPageForContext(context);
+    effect->SetInput(0, sourceBitmap);
+
+    ComSmartPtr<ID2D1Bitmap1> outputBitmap;
+    if (outputPixelData)
+    {
+        outputBitmap = outputPixelData->getFirstPageForContext(context);
+    }
+    else
+    {
+        outputBitmap = Direct2DBitmap::createBitmap(context,
+            Image::ARGB,
+            D2D1::SizeU((UINT32)outputArea.getWidth(), (UINT32)outputArea.getHeight()),
+            D2D1_BITMAP_OPTIONS_TARGET);
+    }
+
+    context->SetTarget(outputBitmap);
+    context->BeginDraw();
+    if (outputPixelData && (outputArea.getWidth() != outputPixelData->width || outputArea.getHeight() != outputPixelData->height))
+    {
+        context->PushAxisAlignedClip(D2DUtilities::toRECT_F(outputArea), D2D1_ANTIALIAS_MODE_ALIASED);
+    }
+    context->Clear();
+    context->DrawImage(effect);
+    context->EndDraw();
+
+    if (outputPixelData == nullptr)
+    {
+        D2D1_POINT_2U destinationPoint{ (uint32_t)outputArea.getX(), (uint32_t)outputArea.getY() };
+        D2D1_RECT_U sourceArea{ 0, 0, (uint32_t)outputArea.getWidth(), (uint32_t)outputArea.getHeight()};
+        sourceBitmap->CopyFromBitmap(&destinationPoint, outputBitmap, &sourceArea);
+    }
+
+    return true;
+}
+
 void Direct2DPixelData::applyGaussianBlurEffect (float radius, Image& result)
 {
     // The result must be a separate image!
     jassert (result.getPixelData() != this);
 
-    const auto adapter = directX->adapters.getDefaultAdapter();
-
-    if (adapter == nullptr)
+    auto outputPixelData = dynamic_cast<Direct2DPixelData*>(result.getPixelData());
+    if (outputPixelData == nullptr)
     {
         result = {};
         return;
     }
 
-    const auto context = Direct2DDeviceContext::create (adapter);
-    const auto maxSize = (int) context->GetMaximumBitmapSize();
-
-    if (context == nullptr || maxSize < width || maxSize < height)
-    {
-        result = {};
-        return;
-    }
-
-    ComSmartPtr<ID2D1Effect> effect;
-    if (const auto hr = context->CreateEffect (CLSID_D2D1GaussianBlur, effect.resetAndGetPointerAddress());
-        FAILED (hr) || effect == nullptr)
-    {
-        result = {};
-        return;
-    }
-
-    effect->SetInput (0, getFirstPageForContext (context));
-    effect->SetValue (D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, radius / 3.0f);
-
-    const auto outputPixelData = Direct2DBitmap::createBitmap (context,
-                                                               Image::ARGB,
-                                                               D2D1::SizeU ((UINT32) width, (UINT32) height),
-                                                               D2D1_BITMAP_OPTIONS_TARGET);
-
-    context->SetTarget (outputPixelData);
-    context->BeginDraw();
-    context->Clear();
-    context->DrawImage (effect);
-    context->EndDraw();
-
-    result = Image { new Direct2DPixelData { context, outputPixelData } };
+    applyDirect2DEffect(CLSID_D2D1GaussianBlur, outputPixelData, { width, height }, [radius](ComSmartPtr<ID2D1Effect> effect)
+        {
+            effect->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, radius / 3.0f);
+        });
 }
 
-void Direct2DPixelData::applySingleChannelBoxBlurEffect (int radius, Image& result)
+void Direct2DPixelData::applyShadowEffect (int radius, Image& result)
 {
     // The result must be a separate image!
-    jassert (result.getPixelData() != this);
+    jassert(result.getPixelData() != this);
 
-    const auto adapter = directX->adapters.getDefaultAdapter();
-
-    if (adapter == nullptr)
+    auto outputPixelData = dynamic_cast<Direct2DPixelData*>(result.getPixelData());
+    if (outputPixelData == nullptr)
     {
         result = {};
         return;
     }
 
-    const auto context = Direct2DDeviceContext::create (adapter);
-    const auto maxSize = (int) context->GetMaximumBitmapSize();
-
-    if (context == nullptr || maxSize < width || maxSize < height)
-    {
-        result = {};
-        return;
-    }
-
-    constexpr FLOAT kernel[] { 1.0f / 9.0f, 2.0f / 9.0f, 3.0f / 9.0f, 2.0f / 9.0f, 1.0f / 9.0f };
-
-    ComSmartPtr<ID2D1Effect> begin, end;
-
-    for (auto horizontal : { false, true })
-    {
-        for (auto i = 0; i < radius; ++i)
+    applyDirect2DEffect(CLSID_D2D1Shadow, outputPixelData, { width, height }, [radius](ComSmartPtr<ID2D1Effect> effect)
         {
-            ComSmartPtr<ID2D1Effect> effect;
-            if (const auto hr = context->CreateEffect (CLSID_D2D1ConvolveMatrix, effect.resetAndGetPointerAddress());
-                FAILED (hr) || effect == nullptr)
-            {
-                result = {};
-                return;
-            }
-
-            effect->SetValue (D2D1_CONVOLVEMATRIX_PROP_KERNEL_SIZE_X, (UINT32) (horizontal ? std::size (kernel) : 1));
-            effect->SetValue (D2D1_CONVOLVEMATRIX_PROP_KERNEL_SIZE_Y, (UINT32) (horizontal ? 1 : std::size (kernel)));
-            effect->SetValue (D2D1_CONVOLVEMATRIX_PROP_KERNEL_MATRIX, kernel);
-
-            if (begin == nullptr)
-            {
-                begin = effect;
-                end = effect;
-            }
-            else
-            {
-                effect->SetInputEffect (0, end);
-                end = effect;
-            }
-        }
-    }
-
-    if (begin == nullptr)
-    {
-        result = {};
-        return;
-    }
-
-    begin->SetInput (0, getFirstPageForContext (context));
-
-    const auto outputPixelData = Direct2DBitmap::createBitmap (context,
-                                                               Image::ARGB,
-                                                               D2D1::SizeU ((UINT32) width, (UINT32) height),
-                                                               D2D1_BITMAP_OPTIONS_TARGET);
-
-    context->SetTarget (outputPixelData);
-    context->BeginDraw();
-    context->Clear();
-    context->DrawImage (end);
-    context->EndDraw();
-
-    result = Image { new Direct2DPixelData { context, outputPixelData } };
+            effect->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, radius / 3.0f);
+        });
 }
 
 auto Direct2DPixelData::getPagesForContext (ComSmartPtr<ID2D1DeviceContext1> context) -> Span<const Page>
@@ -651,7 +785,7 @@ auto Direct2DPixelData::getPagesForContext (ComSmartPtr<ID2D1DeviceContext1> con
 }
 
 //==============================================================================
-ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage) const
+ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage, Image::Permanence requestedPermanence) const
 {
     SharedResourcePointer<DirectX> directX;
 
@@ -662,10 +796,10 @@ ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int widt
         // The caller may be trying to create an Image from a static variable; if this is a DLL, then this is
         // probably called from DllMain. You can't create a DXGI factory from DllMain, so fall back to a
         // software image.
-        return new SoftwarePixelData { format, width, height, clearImage };
+        return new SoftwarePixelData { format, width, height, clearImage, requestedPermanence };
     }
 
-    return new Direct2DPixelData (format, width, height, clearImage);
+    return new Direct2DPixelData{ format, width, height, clearImage, requestedPermanence };
 }
 
 //==============================================================================
@@ -833,17 +967,17 @@ public:
 
     void compareSameFormat (Image::PixelFormat format, int width, int height)
     {
-        auto softwareImage = Image { SoftwareImageType{}.create (format, width, height, true) };
+        auto softwareImage = Image{ SoftwareImageType{}.create(format, width, height, true) };
         {
-            Graphics g { softwareImage };
-            g.fillCheckerBoard (softwareImage.getBounds().toFloat(), 21.0f, 21.0f, makeRandomColor(), makeRandomColor());
+            Graphics g{ softwareImage };
+            g.fillCheckerBoard(softwareImage.getBounds().toFloat(), 21.0f, 21.0f, makeRandomColor(), makeRandomColor());
         }
 
-        auto direct2DImage = NativeImageType{}.convert (softwareImage);
+        auto direct2DImage = NativeImageType{}.convert(softwareImage);
 
-        compareImages (softwareImage, direct2DImage, compareFunctions[{ softwareImage.getFormat(), direct2DImage.getFormat() }]);
-        checkReadWriteModes (softwareImage);
-        checkReadWriteModes (direct2DImage);
+        compareImages(softwareImage, direct2DImage, compareFunctions[{ softwareImage.getFormat(), direct2DImage.getFormat() }]);
+        checkReadWriteModes(softwareImage);
+        checkReadWriteModes(direct2DImage);
     }
 
     void compareImages (Image& image1, Image& image2, std::function<bool (uint8*, uint8*)> compareBytes)
@@ -951,24 +1085,27 @@ public:
 
     void testFormatConversion (int width, int height)
     {
-        for (auto sourceFormat : formats)
+        for (auto permanence : permanenceModes)
         {
-            for (auto destFormat : formats)
+            for (auto sourceFormat : formats)
             {
-                Image softwareStartImage { SoftwareImageType {}.create (sourceFormat, width, height, true) };
+                for (auto destFormat : formats)
                 {
-                    Graphics g { softwareStartImage };
-                    g.fillCheckerBoard (softwareStartImage.getBounds().toFloat(), 21.0f, 21.0f, makeRandomColor(), makeRandomColor());
+                    Image softwareStartImage{ SoftwareImageType {}.create(sourceFormat, width, height, true, permanence) };
+                    {
+                        Graphics g{ softwareStartImage };
+                        g.fillCheckerBoard(softwareStartImage.getBounds().toFloat(), 21.0f, 21.0f, makeRandomColor(), makeRandomColor());
+                    }
+
+                    auto convertedSoftwareImage = softwareStartImage.convertedToFormat(destFormat);
+                    compareImages(softwareStartImage, convertedSoftwareImage, compareFunctions[{ sourceFormat, destFormat }]);
+
+                    auto direct2DImage = NativeImageType{}.convert(softwareStartImage);
+                    compareImages(softwareStartImage, direct2DImage, compareFunctions[{ sourceFormat, sourceFormat }]);
+
+                    auto convertedDirect2DImage = direct2DImage.convertedToFormat(destFormat);
+                    compareImages(softwareStartImage, convertedDirect2DImage, compareFunctions[{ sourceFormat, destFormat }]);
                 }
-
-                auto convertedSoftwareImage = softwareStartImage.convertedToFormat (destFormat);
-                compareImages (softwareStartImage, convertedSoftwareImage, compareFunctions[{ sourceFormat, destFormat }]);
-
-                auto direct2DImage = NativeImageType{}.convert (softwareStartImage);
-                compareImages (softwareStartImage, direct2DImage, compareFunctions[{ sourceFormat, sourceFormat }]);
-
-                auto convertedDirect2DImage = direct2DImage.convertedToFormat (destFormat);
-                compareImages (softwareStartImage, convertedDirect2DImage, compareFunctions[{ sourceFormat, destFormat }]);
             }
         }
     }
@@ -985,6 +1122,7 @@ public:
     SharedResourcePointer<DirectX> directX;
     Random random;
     std::array<Image::PixelFormat, 3> const formats { Image::RGB, Image::ARGB, Image::SingleChannel };
+    std::array<Image::Permanence, 2> const permanenceModes{ Image::permanent, Image::disposable };
     std::map<std::pair<Image::PixelFormat, Image::PixelFormat>, std::function<bool (uint8*, uint8*)>> compareFunctions;
 };
 

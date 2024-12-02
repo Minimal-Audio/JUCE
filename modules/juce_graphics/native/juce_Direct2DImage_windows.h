@@ -132,20 +132,19 @@ public:
         This will immediately copy the content of the image to the software backup, so that the
         image can still be drawn if original device goes away.
     */
-    Direct2DPixelData (ComSmartPtr<ID2D1DeviceContext1>, ComSmartPtr<ID2D1Bitmap1>);
+    Direct2DPixelData (ComSmartPtr<ID2D1DeviceContext1>, ComSmartPtr<ID2D1Bitmap1>, Image::Permanence permanence = Image::Permanence::permanent);
 
     /*  Creates software image storage of the requested size. */
-    Direct2DPixelData (Image::PixelFormat, int, int, bool);
+    Direct2DPixelData (Image::PixelFormat, int, int, bool, Image::Permanence permanence = Image::Permanence::permanent);
 
     ~Direct2DPixelData() override;
 
     /*  Creates new software image storage with content matching the content of this image.
         Does not copy any hardware resources.
     */
-    ImagePixelData::Ptr clone() override
-    {
-        return new Direct2DPixelData (backingData->clone(), State::drawn);
-    }
+    ImagePixelData::Ptr clone() override;
+
+    ImagePixelData::Ptr convertedToFormat (Image::PixelFormat, Image::Permanence permanence) override;
 
     std::unique_ptr<ImageType> createType() const override
     {
@@ -170,8 +169,13 @@ public:
     */
     void initialiseBitmapData (Image::BitmapData&, int, int, Image::BitmapData::ReadWriteMode) override;
 
+    void moveImageSection(int destX, int destY,
+        int sourceX, int sourceY,
+        int width, int height) override;
+    void multiplyAllAlphas(float amountToMultiplyBy);
+    void desaturate() override;
     void applyGaussianBlurEffect (float radius, Image& result) override;
-    void applySingleChannelBoxBlurEffect (int radius, Image& result) override;
+    void applyShadowEffect (int radius, Image& result) override;
 
     /*  This returns image data that is suitable for use when drawing with the provided context.
         This image data should be treated as a read-only view - making modifications directly
@@ -198,7 +202,7 @@ private:
         drawn,
     };
 
-    Direct2DPixelData (ImagePixelData::Ptr, State);
+    Direct2DPixelData (ImagePixelData::Ptr, State, Image::Permanence);
     auto getIteratorForContext (ComSmartPtr<ID2D1DeviceContext1>);
 
     void adapterCreated (DxgiAdapter::Ptr) override {}
@@ -207,6 +211,11 @@ private:
         if (adapter != nullptr)
             pagesForDevice.erase (adapter->direct2DDevice);
     }
+
+    bool applyDirect2DEffect(GUID const& effectID,
+        Direct2DPixelData::Ptr outputPixelData,
+        Rectangle<int> outputArea,
+        std::optional<std::function<void(ComSmartPtr<ID2D1Effect>)>> configureEffect = std::nullopt);
 
     SharedResourcePointer<DirectX> directX;
     ImagePixelData::Ptr backingData;

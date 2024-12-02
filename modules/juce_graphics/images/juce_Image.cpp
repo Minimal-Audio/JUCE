@@ -104,7 +104,7 @@ public:
         jassert (getReferenceCount() > 0); // (This method can't be used on an unowned pointer, as it will end up self-deleting)
         auto type = createType();
 
-        Image newImage (type->create (pixelFormat, area.getWidth(), area.getHeight(), pixelFormat != Image::RGB));
+        Image newImage (type->create (pixelFormat, area.getWidth(), area.getHeight(), pixelFormat != Image::RGB, sourceImage->permanence));
 
         {
             Graphics g (newImage);
@@ -128,8 +128,8 @@ private:
 };
 
 //==============================================================================
-ImagePixelData::ImagePixelData (Image::PixelFormat format, int w, int h)
-    : pixelFormat (format), width (w), height (h)
+ImagePixelData::ImagePixelData (Image::PixelFormat format, int w, int h, Image::Permanence permanenceIn)
+    : pixelFormat (format), width (w), height (h), permanence(permanenceIn)
 {
     jassert (format == Image::RGB || format == Image::ARGB || format == Image::SingleChannel);
     jassert (w > 0 && h > 0); // It's illegal to create a zero-sized image!
@@ -150,12 +150,213 @@ int ImagePixelData::getSharedCount() const noexcept
     return getReferenceCount();
 }
 
+ImagePixelData::Ptr ImagePixelData::convertedToFormat(Image::PixelFormat newFormat, Image::Permanence)
+{
+    bool hasAlphaChannel = pixelFormat != Image::RGB;
+    auto w = width, h = height;
+
+    auto type = createType();
+    Image newImage(type->create(newFormat, w, h, false));
+
+    if (newFormat == Image::SingleChannel)
+    {
+        if (!hasAlphaChannel)
+        {
+            newImage.clear({ w, h }, Colours::black);
+        }
+        else
+        {
+            const Image::BitmapData destData(newImage, 0, 0, w, h, Image::BitmapData::writeOnly);
+            const Image srcImage{ this };
+            const Image::BitmapData srcData(srcImage, 0, 0, w, h);
+
+            for (int y = 0; y < h; ++y)
+            {
+                auto src = reinterpret_cast<const PixelARGB*> (srcData.getLinePointer(y));
+                auto dst = destData.getLinePointer(y);
+
+                for (int x = 0; x < w; ++x)
+                    dst[x] = src[x].getAlpha();
+            }
+        }
+    }
+    else if (pixelFormat == Image::SingleChannel && newFormat == Image::ARGB)
+    {
+        const Image::BitmapData destData(newImage, 0, 0, w, h, Image::BitmapData::writeOnly);
+        const Image srcImage{ this };
+        const Image::BitmapData srcData(srcImage, 0, 0, w, h);
+
+        for (int y = 0; y < h; ++y)
+        {
+            auto src = reinterpret_cast<const PixelAlpha*> (srcData.getLinePointer(y));
+            auto dst = reinterpret_cast<PixelARGB*> (destData.getLinePointer(y));
+
+            for (int x = 0; x < w; ++x)
+                dst[x].set(src[x]);
+        }
+    }
+    else
+    {
+        if (hasAlphaChannel)
+            newImage.clear({ w, h });
+
+        Image srcImage{ this };
+        Graphics g(newImage);
+        g.drawImageAt(srcImage, 0, 0);
+    }
+
+    return newImage.getPixelData();
+}
+
+void ImagePixelData::moveImageSection(int dx, int dy,
+    int sx, int sy,
+    int w, int h)
+{
+    if (dx < 0)
+    {
+        w += dx;
+        sx -= dx;
+        dx = 0;
+    }
+
+    if (dy < 0)
+    {
+        h += dy;
+        sy -= dy;
+        dy = 0;
+    }
+
+    if (sx < 0)
+    {
+        w += sx;
+        dx -= sx;
+        sx = 0;
+    }
+
+    if (sy < 0)
+    {
+        h += sy;
+        dy -= sy;
+        sy = 0;
+    }
+
+    const int minX = jmin(dx, sx);
+    const int minY = jmin(dy, sy);
+
+    w = jmin(w, width - jmax(sx, dx));
+    h = jmin(h, height - jmax(sy, dy));
+
+    if (w > 0 && h > 0)
+    {
+        auto maxX = jmax(dx, sx) + w;
+        auto maxY = jmax(dy, sy) + h;
+
+        Image image{ this };
+        const Image::BitmapData destData(image, minX, minY, maxX - minX, maxY - minY, Image::BitmapData::readWrite);
+
+        auto dst = destData.getPixelPointer(dx - minX, dy - minY);
+        auto src = destData.getPixelPointer(sx - minX, sy - minY);
+
+        auto lineSize = (size_t)destData.pixelStride * (size_t)w;
+
+        if (dy > sy)
+        {
+            while (--h >= 0)
+            {
+                const int offset = h * destData.lineStride;
+                memmove(dst + offset, src + offset, lineSize);
+            }
+        }
+        else if (dst != src)
+        {
+            while (--h >= 0)
+            {
+                memmove(dst, src, lineSize);
+                dst += destData.lineStride;
+                src += destData.lineStride;
+            }
+        }
+    }
+}
+
+template <class PixelType>
+struct PixelIterator
+{
+    template <class PixelOperation>
+    static void iterate(const Image::BitmapData& data, const PixelOperation& pixelOp)
+    {
+        for (int y = 0; y < data.height; ++y)
+        {
+            auto p = data.getLinePointer(y);
+
+            for (int x = 0; x < data.width; ++x)
+            {
+                pixelOp(*reinterpret_cast<PixelType*> (p));
+                p += data.pixelStride;
+            }
+        }
+    }
+};
+
+template <class PixelOperation>
+static void performPixelOp(const Image::BitmapData& data, const PixelOperation& pixelOp)
+{
+    switch (data.pixelFormat)
+    {
+    case Image::ARGB:           PixelIterator<PixelARGB> ::iterate(data, pixelOp); break;
+    case Image::RGB:            PixelIterator<PixelRGB>  ::iterate(data, pixelOp); break;
+    case Image::SingleChannel:  PixelIterator<PixelAlpha>::iterate(data, pixelOp); break;
+    case Image::UnknownFormat:
+    default:                    jassertfalse; break;
+    }
+}
+
+struct AlphaMultiplyOp
+{
+    float alpha;
+
+    template <class PixelType>
+    void operator() (PixelType& pixel) const
+    {
+        pixel.multiplyAlpha(alpha);
+    }
+};
+
+void ImagePixelData::multiplyAllAlphas(float amountToMultiplyBy)
+{
+    if (pixelFormat == Image::ARGB || pixelFormat == Image::SingleChannel)
+    {
+        Image image{ this };
+        const Image::BitmapData destData(image, 0, 0, width, height, Image::BitmapData::readWrite);
+        performPixelOp(destData, AlphaMultiplyOp{ amountToMultiplyBy });
+    }
+}
+
+struct DesaturateOp
+{
+    template <class PixelType>
+    void operator() (PixelType& pixel) const
+    {
+        pixel.desaturate();
+    }
+};
+
+void ImagePixelData::desaturate()
+{
+    if (pixelFormat == Image::RGB || pixelFormat == Image::ARGB)
+    {
+        Image image{ this };
+        const Image::BitmapData destData(image, 0, 0, width, height, Image::BitmapData::readWrite);
+        performPixelOp(destData, DesaturateOp());
+    }
+}
+
 void ImagePixelData::applyGaussianBlurEffect ([[maybe_unused]] float radius, Image& result)
 {
     result = {};
 }
 
-void ImagePixelData::applySingleChannelBoxBlurEffect ([[maybe_unused]] int radius, juce::Image &result)
+void ImagePixelData::applyShadowEffect ([[maybe_unused]] int radius, juce::Image &result)
 {
     result = {};
 }
@@ -181,8 +382,8 @@ Image ImageType::convert (const Image& source) const
 class SoftwarePixelData : public ImagePixelData
 {
 public:
-    SoftwarePixelData (Image::PixelFormat formatToUse, int w, int h, bool clearImage)
-        : ImagePixelData (formatToUse, w, h),
+    SoftwarePixelData (Image::PixelFormat formatToUse, int w, int h, bool clearImage, Image::Permanence requestedPermanence)
+        : ImagePixelData (formatToUse, w, h, requestedPermanence),
           pixelStride (formatToUse == Image::RGB ? 3 : ((formatToUse == Image::ARGB) ? 4 : 1)),
           lineStride ((pixelStride * jmax (1, w) + 3) & ~3)
     {
@@ -210,7 +411,7 @@ public:
 
     ImagePixelData::Ptr clone() override
     {
-        auto s = new SoftwarePixelData (pixelFormat, width, height, false);
+        auto s = new SoftwarePixelData (pixelFormat, width, height, false, permanence);
         memcpy (s->imageData, imageData, (size_t) lineStride * (size_t) height);
         return *s;
     }
@@ -227,9 +428,9 @@ private:
 SoftwareImageType::SoftwareImageType() = default;
 SoftwareImageType::~SoftwareImageType() = default;
 
-ImagePixelData::Ptr SoftwareImageType::create (Image::PixelFormat format, int width, int height, bool clearImage) const
+ImagePixelData::Ptr SoftwareImageType::create (Image::PixelFormat format, int width, int height, bool clearImage, Image::Permanence permanence) const
 {
-    return *new SoftwarePixelData (format, width, height, clearImage);
+    return *new SoftwarePixelData (format, width, height, clearImage, permanence);
 }
 
 int SoftwareImageType::getTypeID() const
@@ -276,13 +477,13 @@ Image::Image (ReferenceCountedObjectPtr<ImagePixelData> instance) noexcept
 {
 }
 
-Image::Image (PixelFormat format, int width, int height, bool clearImage)
-    : image (NativeImageType().create (format, width, height, clearImage))
+Image::Image (PixelFormat format, int width, int height, bool clearImage, Permanence requestedPermanence)
+    : image (NativeImageType().create (format, width, height, clearImage, requestedPermanence))
 {
 }
 
-Image::Image (PixelFormat format, int width, int height, bool clearImage, const ImageType& type)
-    : image (type.create (format, width, height, clearImage))
+Image::Image (PixelFormat format, int width, int height, bool clearImage, const ImageType& type, Permanence requestedPermanence)
+    : image (type.create (format, width, height, clearImage, requestedPermanence))
 {
 }
 
@@ -325,6 +526,8 @@ bool Image::isARGB() const noexcept                     { return getFormat() == 
 bool Image::isRGB() const noexcept                      { return getFormat() == RGB; }
 bool Image::isSingleChannel() const noexcept            { return getFormat() == SingleChannel; }
 bool Image::hasAlphaChannel() const noexcept            { return getFormat() != RGB; }
+bool Image::isPermanent() const noexcept                { return image != nullptr && image->permanence == Permanence::permanent; }
+bool Image::isDisposable() const noexcept               { return ! isPermanent(); }
 
 std::unique_ptr<LowLevelGraphicsContext> Image::createLowLevelContext() const
 {
@@ -354,7 +557,7 @@ Image Image::rescaled (int newWidth, int newHeight, Graphics::ResamplingQuality 
         return *this;
 
     auto type = image->createType();
-    Image newImage (type->create (image->pixelFormat, newWidth, newHeight, hasAlphaChannel()));
+    Image newImage (type->create (image->pixelFormat, newWidth, newHeight, hasAlphaChannel(), image->permanence));
 
     Graphics g (newImage);
     g.setImageResamplingQuality (quality);
@@ -368,56 +571,7 @@ Image Image::convertedToFormat (PixelFormat newFormat) const
     if (image == nullptr || newFormat == image->pixelFormat)
         return *this;
 
-    auto w = image->width, h = image->height;
-
-    auto type = image->createType();
-    Image newImage (type->create (newFormat, w, h, false));
-
-    if (newFormat == SingleChannel)
-    {
-        if (! hasAlphaChannel())
-        {
-            newImage.clear (getBounds(), Colours::black);
-        }
-        else
-        {
-            const BitmapData destData (newImage, 0, 0, w, h, BitmapData::writeOnly);
-            const BitmapData srcData (*this, 0, 0, w, h);
-
-            for (int y = 0; y < h; ++y)
-            {
-                auto src = reinterpret_cast<const PixelARGB*> (srcData.getLinePointer (y));
-                auto dst = destData.getLinePointer (y);
-
-                for (int x = 0; x < w; ++x)
-                    dst[x] = src[x].getAlpha();
-            }
-        }
-    }
-    else if (image->pixelFormat == SingleChannel && newFormat == Image::ARGB)
-    {
-        const BitmapData destData (newImage, 0, 0, w, h, BitmapData::writeOnly);
-        const BitmapData srcData (*this, 0, 0, w, h);
-
-        for (int y = 0; y < h; ++y)
-        {
-            auto src = reinterpret_cast<const PixelAlpha*> (srcData.getLinePointer (y));
-            auto dst = reinterpret_cast<PixelARGB*> (destData.getLinePointer (y));
-
-            for (int x = 0; x < w; ++x)
-                dst[x].set (src[x]);
-        }
-    }
-    else
-    {
-        if (hasAlphaChannel())
-            newImage.clear (getBounds());
-
-        Graphics g (newImage);
-        g.drawImageAt (*this, 0, 0);
-    }
-
-    return newImage;
+    return Image{ image->convertedToFormat(newFormat, image->permanence) };
 }
 
 NamedValueSet* Image::getProperties() const
@@ -544,73 +698,18 @@ void Image::multiplyAlphaAt (int x, int y, float multiplier)
     }
 }
 
-template <class PixelType>
-struct PixelIterator
-{
-    template <class PixelOperation>
-    static void iterate (const Image::BitmapData& data, const PixelOperation& pixelOp)
-    {
-        for (int y = 0; y < data.height; ++y)
-        {
-            auto p = data.getLinePointer (y);
-
-            for (int x = 0; x < data.width; ++x)
-            {
-                pixelOp (*reinterpret_cast<PixelType*> (p));
-                p += data.pixelStride;
-            }
-        }
-    }
-};
-
-template <class PixelOperation>
-static void performPixelOp (const Image::BitmapData& data, const PixelOperation& pixelOp)
-{
-    switch (data.pixelFormat)
-    {
-        case Image::ARGB:           PixelIterator<PixelARGB> ::iterate (data, pixelOp); break;
-        case Image::RGB:            PixelIterator<PixelRGB>  ::iterate (data, pixelOp); break;
-        case Image::SingleChannel:  PixelIterator<PixelAlpha>::iterate (data, pixelOp); break;
-        case Image::UnknownFormat:
-        default:                    jassertfalse; break;
-    }
-}
-
-struct AlphaMultiplyOp
-{
-    float alpha;
-
-    template <class PixelType>
-    void operator() (PixelType& pixel) const
-    {
-        pixel.multiplyAlpha (alpha);
-    }
-};
-
 void Image::multiplyAllAlphas (float amountToMultiplyBy)
 {
     jassert (hasAlphaChannel());
 
-    const BitmapData destData (*this, 0, 0, getWidth(), getHeight(), BitmapData::readWrite);
-    performPixelOp (destData, AlphaMultiplyOp { amountToMultiplyBy });
+    if (image)
+        image->multiplyAllAlphas(amountToMultiplyBy);
 }
-
-struct DesaturateOp
-{
-    template <class PixelType>
-    void operator() (PixelType& pixel) const
-    {
-        pixel.desaturate();
-    }
-};
 
 void Image::desaturate()
 {
-    if (isARGB() || isRGB())
-    {
-        const BitmapData destData (*this, 0, 0, getWidth(), getHeight(), BitmapData::readWrite);
-        performPixelOp (destData, DesaturateOp());
-    }
+    if (image)
+        image->desaturate();
 }
 
 void Image::createSolidAreaMask (RectangleList<int>& result, float alphaThreshold) const
@@ -667,70 +766,8 @@ void Image::moveImageSection (int dx, int dy,
                               int sx, int sy,
                               int w, int h)
 {
-    if (dx < 0)
-    {
-        w += dx;
-        sx -= dx;
-        dx = 0;
-    }
-
-    if (dy < 0)
-    {
-        h += dy;
-        sy -= dy;
-        dy = 0;
-    }
-
-    if (sx < 0)
-    {
-        w += sx;
-        dx -= sx;
-        sx = 0;
-    }
-
-    if (sy < 0)
-    {
-        h += sy;
-        dy -= sy;
-        sy = 0;
-    }
-
-    const int minX = jmin (dx, sx);
-    const int minY = jmin (dy, sy);
-
-    w = jmin (w, getWidth()  - jmax (sx, dx));
-    h = jmin (h, getHeight() - jmax (sy, dy));
-
-    if (w > 0 && h > 0)
-    {
-        auto maxX = jmax (dx, sx) + w;
-        auto maxY = jmax (dy, sy) + h;
-
-        const BitmapData destData (*this, minX, minY, maxX - minX, maxY - minY, BitmapData::readWrite);
-
-        auto dst = destData.getPixelPointer (dx - minX, dy - minY);
-        auto src = destData.getPixelPointer (sx - minX, sy - minY);
-
-        auto lineSize = (size_t) destData.pixelStride * (size_t) w;
-
-        if (dy > sy)
-        {
-            while (--h >= 0)
-            {
-                const int offset = h * destData.lineStride;
-                memmove (dst + offset, src + offset, lineSize);
-            }
-        }
-        else if (dst != src)
-        {
-            while (--h >= 0)
-            {
-                memmove (dst, src, lineSize);
-                dst += destData.lineStride;
-                src += destData.lineStride;
-            }
-        }
-    }
+    if (image)
+        image->moveImageSection (dx, dy, sx, sy, w, h);
 }
 
 void ImageEffects::applyGaussianBlurEffect (float radius, const Image& input, Image& result)
@@ -743,12 +780,12 @@ void ImageEffects::applyGaussianBlurEffect (float radius, const Image& input, Im
         return;
     }
 
-    auto copy = result;
-    image->applyGaussianBlurEffect (radius, copy);
+    auto imageEffectOutput = Image{ Image::SingleChannel, input.getWidth(), input.getHeight(), false, Image::Permanence::disposable };
+    image->applyGaussianBlurEffect (radius, imageEffectOutput);
 
-    if (copy.isValid())
+    if (imageEffectOutput.isValid())
     {
-        result = std::move (copy);
+        result = std::move (imageEffectOutput);
         return;
     }
 
@@ -814,12 +851,12 @@ void ImageEffects::applySingleChannelBoxBlurEffect (int radius, const Image& inp
         return;
     }
 
-    auto copy = result;
-    image->applySingleChannelBoxBlurEffect (radius, copy);
+    auto imageEffectOutput = Image{ Image::SingleChannel, input.getWidth(), input.getHeight(), false, Image::Permanence::disposable };
+    image->applyShadowEffect (radius, imageEffectOutput);
 
-    if (copy.isValid())
+    if (imageEffectOutput.isValid())
     {
-        result = std::move (copy);
+        result = std::move (imageEffectOutput);
         return;
     }
 

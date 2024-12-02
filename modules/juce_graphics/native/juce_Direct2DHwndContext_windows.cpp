@@ -32,33 +32,40 @@
   ==============================================================================
 */
 
+#ifndef JUCE_SWAP_CHAIN_EVENT_THREAD
+#define JUCE_SWAP_CHAIN_EVENT_THREAD 0
+#endif
+
 namespace juce
 {
 
 struct Direct2DHwndContext::HwndPimpl : public Direct2DGraphicsContext::Pimpl
 {
 private:
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
     struct SwapChainThread : private AsyncUpdater
     {
-        explicit SwapChainThread (Direct2DHwndContext::HwndPimpl& ownerIn)
-            : owner (ownerIn),
-              swapChainEventHandle (ownerIn.swap.swapChainEvent->getHandle())
+        SwapChainThread(Direct2DHwndContext::HwndPimpl& ownerIn, HANDLE swapHandle)
+            : owner(ownerIn),
+            swapChainEventHandle(swapHandle)
         {
         }
 
         ~SwapChainThread() override
         {
             cancelPendingUpdate();
-            SetEvent (quitEvent.getHandle());
+            SetEvent(quitEvent.getHandle());
             thread.join();
         }
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SwapChainThread)
 
     private:
         Direct2DHwndContext::HwndPimpl& owner;
         HANDLE swapChainEventHandle = nullptr;
 
         WindowsScopedEvent quitEvent;
-        std::thread thread { [&] { threadLoop(); } };
+        std::thread thread{ [&] { threadLoop(); } };
 
         void handleAsyncUpdate() override
         {
@@ -68,37 +75,40 @@ private:
 
         void threadLoop()
         {
-            Thread::setCurrentThreadName ("JUCE D2D swap chain thread");
+            Thread::setCurrentThreadName("JUCE D2D swap chain thread");
 
             for (;;)
             {
-                const HANDLE handles[] { swapChainEventHandle, quitEvent.getHandle() };
+                const HANDLE handles[]{ swapChainEventHandle, quitEvent.getHandle() };
 
-                const auto waitResult = WaitForMultipleObjects ((DWORD) std::size (handles), handles, FALSE, INFINITE);
+                const auto waitResult = WaitForMultipleObjects((DWORD)std::size(handles), handles, FALSE, INFINITE);
 
                 switch (waitResult)
                 {
-                    case WAIT_OBJECT_0:
-                    {
-                        triggerAsyncUpdate();
-                        break;
-                    }
+                case WAIT_OBJECT_0:
+                {
+                    triggerAsyncUpdate();
+                    break;
+                }
 
-                    case WAIT_OBJECT_0 + 1:
-                        return;
+                case WAIT_OBJECT_0 + 1:
+                    return;
 
-                    case WAIT_FAILED:
-                    default:
-                        jassertfalse;
-                        break;
+                case WAIT_FAILED:
+                default:
+                    jassertfalse;
+                    break;
                 }
             }
         }
     };
+#endif
 
     SwapChain swap;
     ComSmartPtr<ID2D1DeviceContext1> deviceContext;
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
     std::unique_ptr<SwapChainThread> swapChainThread;
+#endif
     std::optional<CompositionTree> compositionTree;
 
     // Areas that must be repainted during the next paint call, between startFrame/endFrame
@@ -113,7 +123,9 @@ private:
 
     // Set to true after the swap event is signalled, indicating that we're allowed to try presenting
     // a new frame.
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
     bool swapEventReceived = false;
+#endif
 
     bool prepare() override
     {
@@ -141,16 +153,16 @@ private:
         {
             if (auto hr = swap.create (hwnd, getClientRect(), adapter); FAILED (hr))
                 return false;
-
-            if (auto hr = swap.createBuffer (getDeviceContext()); FAILED (hr))
-                return false;
         }
 
-        if (! swapChainThread && swap.swapChainEvent.has_value())
-            swapChainThread = std::make_unique<SwapChainThread> (*this);
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
+        if (swapChainThread == nullptr)
+            if (auto* e = swap.getEvent())
+                swapChainThread = std::make_unique<SwapChainThread> (*this, e->getHandle());
+#endif
 
         if (! compositionTree.has_value())
-            compositionTree = CompositionTree::create (adapter->dxgiDevice, hwnd, swap.chain);
+            compositionTree = CompositionTree::create (adapter->dxgiDevice, hwnd, swap.getChain());
 
         if (! compositionTree.has_value())
             return false;
@@ -161,9 +173,11 @@ private:
     void teardown() override
     {
         compositionTree.reset();
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
         swapChainThread = nullptr;
+#endif
         deviceContext = nullptr;
-        swap.release();
+        swap = {};
 
         Pimpl::teardown();
     }
@@ -179,13 +193,8 @@ private:
         if (auto now = Time::getHighResolutionTicks(); Time::highResolutionTicksToSeconds (now - lastFinishFrameTicks) < 0.001)
             return false;
 
-        // Paint if:
-        //      resources are allocated
-        //      deferredRepaints has areas to be painted
-        //      the swap chain thread is ready
         bool ready = Pimpl::checkPaintReady();
         ready &= swap.canPaint();
-        ready &= swap.buffer != nullptr;
         ready &= compositionTree.has_value();
 
         return ready;
@@ -231,7 +240,7 @@ public:
 
     ComSmartPtr<ID2D1Image> getDeviceContextTarget() const override
     {
-        return swap.buffer;
+        return swap.getBuffer();
     }
 
     void setSize (Rectangle<int> size)
@@ -250,13 +259,10 @@ public:
         // Resize/scale the swap chain
         prepare();
 
-        if (auto dc = getDeviceContext())
-        {
-            auto hr = swap.resize (size, dc);
-            jassert (SUCCEEDED (hr));
-            if (FAILED (hr))
-                teardown();
-        }
+        auto hr = swap.resize (size);
+        jassert (SUCCEEDED (hr));
+        if (FAILED (hr))
+            teardown();
     }
 
     void addDeferredRepaint (Rectangle<int> deferredRepaint)
@@ -298,7 +304,11 @@ public:
     {
         JUCE_D2DMETRICS_SCOPED_ELAPSED_TIME (owner.metrics, present1Duration);
 
-        if (swap.buffer == nullptr || dirtyRegionsInBackBuffer.isEmpty() || ! swapEventReceived)
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
+        if (swap.getBuffer() == nullptr || dirtyRegionsInBackBuffer.isEmpty() || !swapEventReceived)
+#else
+        if (swap.getBuffer() == nullptr || dirtyRegionsInBackBuffer.isEmpty())
+#endif
             return;
 
         auto const swapChainSize = swap.getSize();
@@ -321,7 +331,7 @@ public:
         }
 
         // Present the freshly painted buffer
-        const auto hr = swap.chain->Present1 (swap.presentSyncInterval, swap.presentFlags, &presentParameters);
+        const auto hr = swap.getChain()->Present1 (swap.presentSyncInterval, swap.presentFlags, &presentParameters);
         jassertquiet (SUCCEEDED (hr));
 
         if (FAILED (hr))
@@ -329,7 +339,9 @@ public:
 
         // We managed to present a frame, so we should avoid rendering anything or calling
         // present again until that frame has been shown on-screen.
+#if JUCE_SWAP_CHAIN_EVENT_THREAD
         swapEventReceived = false;
+#endif
 
         // There's nothing waiting to be displayed in the backbuffer.
         dirtyRegionsInBackBuffer.clear();
@@ -344,36 +356,39 @@ public:
         // This won't capture child windows. Perhaps a better approach would be to use
         // IGraphicsCaptureItemInterop, although this is only supported on Windows 10 v1903+
 
-        const auto context = getDeviceContext();
+        if (deviceContext == nullptr)
+            return {};
 
-        if (context == nullptr || swap.buffer == nullptr)
+        const auto buffer = swap.getBuffer();
+
+        if (buffer == nullptr)
             return {};
 
         // Create the bitmap to receive the snapshot
         D2D1_BITMAP_PROPERTIES1 bitmapProperties{};
         bitmapProperties.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET;
-        bitmapProperties.pixelFormat = swap.buffer->GetPixelFormat();
+        bitmapProperties.pixelFormat = buffer->GetPixelFormat();
 
         const auto swapRect = swap.getSize();
         const auto size = D2D1::SizeU ((UINT32) swapRect.getWidth(), (UINT32) swapRect.getHeight());
 
         ComSmartPtr<ID2D1Bitmap1> snapshot;
 
-        if (const auto hr = context->CreateBitmap (size, nullptr, 0, bitmapProperties, snapshot.resetAndGetPointerAddress()); FAILED (hr))
+        if (const auto hr = deviceContext->CreateBitmap (size, nullptr, 0, bitmapProperties, snapshot.resetAndGetPointerAddress()); FAILED (hr))
             return {};
 
-        swap.chain->Present (0, DXGI_PRESENT_DO_NOT_WAIT);
+        swap.getChain()->Present (0, DXGI_PRESENT_DO_NOT_WAIT);
 
         // Copy the swap chain buffer to the bitmap snapshot
         D2D_POINT_2U p { 0, 0 };
         const auto sourceRect = D2DUtilities::toRECT_U (swapRect);
 
-        if (const auto hr = snapshot->CopyFromBitmap (&p, swap.buffer, &sourceRect); FAILED (hr))
+        if (const auto hr = snapshot->CopyFromBitmap (&p, buffer, &sourceRect); FAILED (hr))
             return {};
 
-        const Image result { new Direct2DPixelData { context, snapshot } };
+        const Image result { new Direct2DPixelData { deviceContext, snapshot, Image::Permanence::permanent } };
 
-        swap.chain->Present (0, DXGI_PRESENT_DO_NOT_WAIT);
+        swap.getChain()->Present (0, DXGI_PRESENT_DO_NOT_WAIT);
 
         return result;
     }
