@@ -4679,7 +4679,8 @@ ModifierKeys HWNDComponentPeer::modifiersAtLastCallback;
 
 ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
 {
-    return new HWNDComponentPeer { *this, styleFlags, (HWND) parentHWND, false, 1 };
+    // Change the last argument (render engine) back to 1 to re-enable Direct2D.
+    return new HWNDComponentPeer { *this, styleFlags, (HWND) parentHWND, false, 0};
 }
 
 Image createSnapshotOfNativeWindow (void* nativeWindowHandle)
