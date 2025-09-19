@@ -125,6 +125,7 @@ namespace Ids
     DECLARE_ID (cppLibType);
     DECLARE_ID (codeSigningIdentity);
     DECLARE_ID (fastMath);
+    DECLARE_ID (intrinsicFunctions);
     DECLARE_ID (linkTimeOptimisation);
     DECLARE_ID (vstBinaryLocation);
     DECLARE_ID (vst3BinaryLocation);
@@ -160,7 +161,6 @@ namespace Ids
     DECLARE_ID (smallIcon);
     DECLARE_ID (prebuildCommand);
     DECLARE_ID (postbuildCommand);
-    DECLARE_ID (generateManifest);
     DECLARE_ID (useRuntimeLibDLL);
     DECLARE_ID (multiProcessorCompilation);
     DECLARE_ID (enableIncrementalLinking);
@@ -215,6 +215,8 @@ namespace Ids
     DECLARE_ID (cameraPermissionText);
     DECLARE_ID (sendAppleEventsPermissionNeeded);
     DECLARE_ID (sendAppleEventsPermissionText);
+    DECLARE_ID (localNetworkPermissionNeeded);
+    DECLARE_ID (localNetworkPermissionText);
     DECLARE_ID (androidJavaLibs);
     DECLARE_ID (androidAdditionalJavaFolders);
     DECLARE_ID (androidAdditionalResourceFolders);

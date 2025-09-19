@@ -33,6 +33,7 @@
 */
 
 #include "juce_VST3Headers.h"
+#include "juce_VST3Utilities.h"
 #include "juce_VST3Common.h"
 
 namespace juce
@@ -633,6 +634,39 @@ public:
                 expect (getVst3SpeakerArrangement (channelSet) == arr);
                 expect (channelSet == getChannelSetForSpeakerArrangement (arr));
             }
+        }
+
+        beginTest ("HostToClientParamQueue::append uses a node from storage");
+        {
+            HostToClientParamQueue::NodeStorage storage;
+            storage.push_back (HostToClientParamQueue::makeNode());
+
+            HostToClientParamQueue queue { {}, {}, storage };
+            queue.append ({ 100, 0.5f });
+
+            expect (queue.getPointCount() == 1);
+            expect (storage.empty());
+
+            queue.clear();
+
+            expect (queue.getPointCount() == 0);
+            expect (storage.size() == 1);
+        }
+
+        beginTest ("If there are no nodes in storage, HostToClientParamQueue::append creates a new node");
+        {
+            HostToClientParamQueue::NodeStorage storage;
+
+            HostToClientParamQueue queue { {}, {}, storage };
+            queue.append ({ 100, 0.5f });
+
+            expect (queue.getPointCount() == 1);
+            expect (storage.empty());
+
+            queue.clear();
+
+            expect (queue.getPointCount() == 0);
+            expect (storage.size() == 1);
         }
     }
 

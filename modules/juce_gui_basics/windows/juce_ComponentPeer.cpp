@@ -189,7 +189,7 @@ Component* ComponentPeer::getTargetForKeyPress()
 bool ComponentPeer::handleKeyPress (const int keyCode, const juce_wchar textCharacter)
 {
     return handleKeyPress (KeyPress (keyCode,
-                                     ModifierKeys::currentModifiers.withoutMouseButtons(),
+                                     ModifierKeys::getCurrentModifiers().withoutMouseButtons(),
                                      textCharacter));
 }
 
@@ -615,6 +615,11 @@ ModifierKeys ComponentPeer::getCurrentModifiersRealtime() noexcept
 void ComponentPeer::forceDisplayUpdate()
 {
     Desktop::getInstance().displays->refresh();
+}
+
+void ComponentPeer::callVBlankListeners (double timestampSec)
+{
+    vBlankListeners.call ([timestampSec] (auto& l) { l.onVBlank (timestampSec); });
 }
 
 void ComponentPeer::globalFocusChanged ([[maybe_unused]] Component* comp)
