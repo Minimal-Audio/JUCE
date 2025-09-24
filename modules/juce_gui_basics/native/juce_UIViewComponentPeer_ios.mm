@@ -40,6 +40,43 @@
 namespace juce
 {
 
+struct WindowSceneTrackerListener
+{
+    virtual ~WindowSceneTrackerListener() = default;
+    virtual void windowSceneChanged() = 0;
+};
+
+struct WindowSceneTracker
+{
+public:
+    WindowSceneTracker() = default;
+
+    void setWindowScene (UIWindowScene* x) API_AVAILABLE (ios (13.0))
+    {
+        windowScene = x;
+        listeners.call ([] (auto& l) { l.windowSceneChanged(); });
+    }
+
+    UIWindowScene* getWindowScene() const API_AVAILABLE (ios (13.0))
+    {
+        return static_cast<UIWindowScene*> (windowScene);
+    }
+
+    void addListener (WindowSceneTrackerListener& l)
+    {
+        listeners.add (&l);
+    }
+
+    void removeListener (WindowSceneTrackerListener& l)
+    {
+        listeners.remove (&l);
+    }
+
+private:
+    ListenerList<WindowSceneTrackerListener> listeners;
+    id windowScene = nil;
+};
+
 //==============================================================================
 static NSArray* getContainerAccessibilityElements (AccessibilityHandler& handler)
 {
@@ -115,9 +152,9 @@ static UIInterfaceOrientation getWindowOrientation()
                 return [(UIWindowScene*) scene interfaceOrientation];
     }
 
-    JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wdeprecated-declarations")
+    JUCE_BEGIN_IGNORE_DEPRECATION_WARNINGS
     return [sharedApplication statusBarOrientation];
-    JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+    JUCE_END_IGNORE_DEPRECATION_WARNINGS
 }
 
 struct Orientations
@@ -307,32 +344,6 @@ struct CADisplayLinkDeleter
     std::unique_ptr<CADisplayLink, CADisplayLinkDeleter> displayLink;
 }
 
-- (JuceUIView*) initWithOwner: (UIViewComponentPeer*) owner withFrame: (CGRect) frame;
-- (void) dealloc;
-
-+ (Class) layerClass;
-
-- (void) displayLinkCallback: (CADisplayLink*) dl;
-
-- (void) drawRect: (CGRect) r;
-
-- (void) touchesBegan:     (NSSet*) touches  withEvent: (UIEvent*) event;
-- (void) touchesMoved:     (NSSet*) touches  withEvent: (UIEvent*) event;
-- (void) touchesEnded:     (NSSet*) touches  withEvent: (UIEvent*) event;
-- (void) touchesCancelled: (NSSet*) touches  withEvent: (UIEvent*) event;
-
-- (void) onHover: (UIHoverGestureRecognizer*) gesture API_AVAILABLE (ios (13.0));
-- (void) onScroll: (UIPanGestureRecognizer*) gesture;
-
-- (BOOL) becomeFirstResponder;
-- (BOOL) resignFirstResponder;
-- (BOOL) canBecomeFirstResponder;
-
-- (void) traitCollectionDidChange: (UITraitCollection*) previousTraitCollection;
-
-- (BOOL) isAccessibilityElement;
-- (CGRect) accessibilityFrame;
-- (NSArray*) accessibilityElements;
 @end
 
 //==============================================================================
@@ -381,10 +392,11 @@ struct UIViewPeerControllerReceiver
 
 //==============================================================================
 class UIViewComponentPeer final : public ComponentPeer,
-                                  public UIViewPeerControllerReceiver
+                                  public UIViewPeerControllerReceiver,
+                                  private WindowSceneTrackerListener
 {
 public:
-    UIViewComponentPeer (Component&, int windowStyleFlags, UIView* viewToAttachTo);
+    UIViewComponentPeer (Component&, int windowStyleFlags, id viewToAttachTo);
     ~UIViewComponentPeer() override;
 
     //==============================================================================
@@ -420,7 +432,7 @@ public:
     void setIcon (const Image& newIcon) override;
     StringArray getAvailableRenderingEngines() override       { return StringArray ("CoreGraphics Renderer"); }
 
-    void displayLinkCallback();
+    void displayLinkCallback (double timestampSec);
 
     void drawRect (CGRect);
     void drawRectWithContext (CGContextRef, CGRect);
@@ -486,6 +498,7 @@ public:
     bool fullScreen = false, insideDrawRect = false;
     NSUniquePtr<JuceTextView> hiddenTextInput { [[JuceTextView alloc] initWithOwner: this] };
     NSUniquePtr<JuceTextInputTokenizer> tokenizer { [[JuceTextInputTokenizer alloc] initWithPeer: this] };
+    SharedResourcePointer<WindowSceneTracker> windowSceneTracker;
 
     static int64 getMouseTime (NSTimeInterval timestamp) noexcept
     {
@@ -532,6 +545,19 @@ private:
     void appStyleChanged() override
     {
         [controller setNeedsStatusBarAppearanceUpdate];
+    }
+
+    void windowSceneChanged() override
+    {
+        if (isSharedWindow)
+            return;
+
+        if (@available (ios 13, *))
+        {
+            window.windowScene = windowSceneTracker->getWindowScene();
+        }
+
+        updateScreenBounds();
     }
 
     //==============================================================================
@@ -768,7 +794,7 @@ MultiTouchMapper<UITouch*> UIViewComponentPeer::currentTouches;
 - (void) displayLinkCallback: (CADisplayLink*) dl
 {
     if (owner != nullptr)
-        owner->displayLinkCallback();
+        owner->displayLinkCallback (dl.targetTimestamp);
 }
 
 #if JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS
@@ -846,7 +872,7 @@ MultiTouchMapper<UITouch*> UIViewComponentPeer::currentTouches;
     [self touchesEnded: touches withEvent: event];
 }
 
-- (void) onHover: (UIHoverGestureRecognizer*) gesture
+- (void) onHover: (UIHoverGestureRecognizer*) gesture API_AVAILABLE (ios (13))
 {
     if (owner != nullptr)
         owner->onHover (gesture);
@@ -891,7 +917,7 @@ static std::optional<int> getKeyCodeForSpecialCharacterString (StringRef charact
                              { nsStringToJuce (UIKeyInputF12),           KeyPress::F12Key } });
         }
 
-       #if defined (__IPHONE_15_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_15_0
+       #if JUCE_IOS_API_VERSION_CAN_BE_BUILT (15, 0)
         if (@available (iOS 15.0, *))
         {
             result.insert ({ { nsStringToJuce (UIKeyInputDelete),        KeyPress::deleteKey } });
@@ -925,7 +951,7 @@ static void updateModifiers (const UIKeyModifierFlags flags)
                          | convert (UIKeyModifierCommand,    ModifierKeys::commandModifier)
                          | convert (UIKeyModifierNumericPad, 0); // numpad modifier currently not implemented
 
-    ModifierKeys::currentModifiers = ModifierKeys::currentModifiers.withOnlyMouseButtons().withFlags (juceFlags);
+    ModifierKeys::currentModifiers = ModifierKeys::getCurrentModifiers().withOnlyMouseButtons().withFlags (juceFlags);
 }
 
 API_AVAILABLE (ios(13.4))
@@ -1045,16 +1071,26 @@ static bool doKeysUp (UIViewComponentPeer* owner, NSSet<UIPress*>* presses, UIPr
     return owner != nullptr && owner->canBecomeKeyWindow();
 }
 
-- (void) traitCollectionDidChange: (UITraitCollection*) previousTraitCollection
+static void postTraitChangeNotification (UITraitCollection* previousTraitCollection)
 {
-    [super traitCollectionDidChange: previousTraitCollection];
-
     const auto wasDarkModeActive = ([previousTraitCollection userInterfaceStyle] == UIUserInterfaceStyleDark);
 
     if (wasDarkModeActive != Desktop::getInstance().isDarkModeActive())
         [[NSNotificationCenter defaultCenter] postNotificationName: UIViewComponentPeer::getDarkModeNotificationName()
                                                             object: nil];
 }
+
+#if ! JUCE_IOS_API_VERSION_MIN_REQUIRED_AT_LEAST (17, 0)
+- (void) traitCollectionDidChange: (UITraitCollection*) previousTraitCollection
+{
+    [super traitCollectionDidChange: previousTraitCollection];
+
+    if (@available (ios 17, *))
+        {} // do nothing
+    else
+        postTraitChangeNotification (previousTraitCollection);
+}
+#endif
 
 - (BOOL) isAccessibilityElement
 {
@@ -1123,7 +1159,7 @@ static bool doKeysUp (UIViewComponentPeer* owner, NSSet<UIPress*>* presses, UIPr
 
 - (BOOL) canPerformAction: (SEL) action withSender: (id) sender
 {
-    if (auto* target = [self getTextInputTarget])
+    if ([self getTextInputTarget] != nullptr)
     {
         if (action == @selector (paste:))
             return [[UIPasteboard generalPasteboard] hasStrings];
@@ -1282,7 +1318,7 @@ static bool doKeysUp (UIViewComponentPeer* owner, NSSet<UIPress*>* presses, UIPr
 - (UITextRange*) markedTextRange
 {
     if (owner != nullptr && owner->stringBeingComposed.isNotEmpty())
-        if (auto* target = owner->findCurrentTextInputTarget())
+        if (owner->findCurrentTextInputTarget() != nullptr)
             return [JuceUITextRange withRange: owner->getMarkedTextRange()];
 
     return nil;
@@ -1697,8 +1733,27 @@ bool KeyPress::isKeyCurrentlyDown (int keyCode)
 
 Point<float> juce_lastMousePos;
 
+struct ChangeRegistrationTrait
+{
+   #if JUCE_IOS_API_VERSION_CAN_BE_BUILT (17, 0)
+    API_AVAILABLE (ios (17))
+    static void newFn (UIView* view)
+    {
+        [view registerForTraitChanges: @[UITraitUserInterfaceStyle.self]
+                          withHandler: ^(JuceUIView*, UITraitCollection* previousTraitCollection)
+        {
+            postTraitChangeNotification (previousTraitCollection);
+        }];
+    }
+   #endif
+
+    static void oldFn (UIView*) {}
+};
+
 //==============================================================================
-UIViewComponentPeer::UIViewComponentPeer (Component& comp, int windowStyleFlags, UIView* viewToAttachTo)
+UIViewComponentPeer::UIViewComponentPeer (Component& comp,
+                                          int windowStyleFlags,
+                                          id viewToAttachTo)
     : ComponentPeer (comp, windowStyleFlags),
       isSharedWindow (viewToAttachTo != nil),
       isAppex (SystemStats::isRunningInAppExtensionSandbox())
@@ -1723,10 +1778,13 @@ UIViewComponentPeer::UIViewComponentPeer (Component& comp, int windowStyleFlags,
     if ((windowStyleFlags & ComponentPeer::windowRequiresSynchronousCoreGraphicsRendering) == 0)
         [[view layer] setDrawsAsynchronously: YES];
 
+    ifelse_17_0<ChangeRegistrationTrait> (view);
+
     if (isSharedWindow)
     {
-        window = [viewToAttachTo window];
-        [viewToAttachTo addSubview: view];
+        auto* uiViewToAttachTo = static_cast<UIView*> (viewToAttachTo);
+        window = [uiViewToAttachTo window];
+        [uiViewToAttachTo addSubview: view];
     }
     else
     {
@@ -1734,6 +1792,12 @@ UIViewComponentPeer::UIViewComponentPeer (Component& comp, int windowStyleFlags,
         r.origin.y = [UIScreen mainScreen].bounds.size.height - (r.origin.y + r.size.height);
 
         window = [[JuceUIWindow alloc] initWithFrame: r];
+
+        if (@available (ios 13, *))
+        {
+            window.windowScene = windowSceneTracker->getWindowScene();
+        }
+
         [((JuceUIWindow*) window) setOwner: this];
 
         controller = [[JuceUIViewController alloc] init];
@@ -1752,10 +1816,14 @@ UIViewComponentPeer::UIViewComponentPeer (Component& comp, int windowStyleFlags,
 
     setTitle (component.getName());
     setVisible (component.isVisible());
+
+    windowSceneTracker->addListener (*this);
 }
 
 UIViewComponentPeer::~UIViewComponentPeer()
 {
+    windowSceneTracker->removeListener (*this);
+
     if (iOSGlobals::currentlyFocusedPeer == this)
         iOSGlobals::currentlyFocusedPeer = nullptr;
 
@@ -1861,6 +1929,12 @@ void UIViewComponentPeer::setFullScreen (bool shouldBeFullScreen)
 
         if ((! shouldBeFullScreen) && r.isEmpty())
             r = getBounds();
+
+        // If we're using the UIScene lifecycle we create our first window before we get assigned
+        // a UIWindowScene, in which case we won't be able to determine the available screen area
+        // and the available bounds may be empty. In this case, we still want to fill the screen
+        // as soon as we find out the available screen area, so set this flag unconditionally.
+        fullScreen = shouldBeFullScreen;
 
         // (can't call the component's setBounds method because that'll reset our fullscreen flag)
         if (! r.isEmpty())
@@ -1997,7 +2071,7 @@ void UIViewComponentPeer::handleTouches (UIEvent* event, MouseEventFlags mouseEv
         auto time = getMouseTime (event);
         auto touchIndex = currentTouches.getIndexOfTouch (this, touch);
 
-        auto modsToSend = ModifierKeys::currentModifiers;
+        auto modsToSend = ModifierKeys::getCurrentModifiers();
 
         auto isUp = [] (MouseEventFlags m)
         {
@@ -2009,8 +2083,8 @@ void UIViewComponentPeer::handleTouches (UIEvent* event, MouseEventFlags mouseEv
             if ([touch phase] != UITouchPhaseBegan)
                 continue;
 
-            ModifierKeys::currentModifiers = ModifierKeys::currentModifiers.withoutMouseButtons().withFlags (ModifierKeys::leftButtonModifier);
-            modsToSend = ModifierKeys::currentModifiers;
+            ModifierKeys::currentModifiers = ModifierKeys::getCurrentModifiers().withoutMouseButtons().withFlags (ModifierKeys::leftButtonModifier);
+            modsToSend = ModifierKeys::getCurrentModifiers();
 
             // this forces a mouse-enter/up event, in case for some reason we didn't get a mouse-up before.
             handleMouseEvent (MouseInputSource::InputSourceType::touch, pos, modsToSend.withoutMouseButtons(),
@@ -2034,7 +2108,7 @@ void UIViewComponentPeer::handleTouches (UIEvent* event, MouseEventFlags mouseEv
         if (mouseEventFlags == MouseEventFlags::upAndCancel)
         {
             currentTouches.clearTouch (touchIndex);
-            modsToSend = ModifierKeys::currentModifiers = ModifierKeys::currentModifiers.withoutMouseButtons();
+            modsToSend = ModifierKeys::currentModifiers = ModifierKeys::getCurrentModifiers().withoutMouseButtons();
         }
 
         // NB: some devices return 0 or 1.0 if pressure is unknown, so we'll clip our value to a believable range:
@@ -2065,7 +2139,7 @@ void UIViewComponentPeer::onHover (UIHoverGestureRecognizer* gesture)
 
     handleMouseEvent (MouseInputSource::InputSourceType::touch,
                       pos,
-                      ModifierKeys::currentModifiers,
+                      ModifierKeys::getCurrentModifiers(),
                       MouseInputSource::defaultPressure, MouseInputSource::defaultOrientation,
                       UIViewComponentPeer::getMouseTime ([[NSProcessInfo processInfo] systemUptime]),
                       {});
@@ -2160,9 +2234,9 @@ void UIViewComponentPeer::dismissPendingTextInput()
 }
 
 //==============================================================================
-void UIViewComponentPeer::displayLinkCallback()
+void UIViewComponentPeer::displayLinkCallback (double timestampSec)
 {
-    vBlankListeners.call ([] (auto& l) { l.onVBlank(); });
+    callVBlankListeners (timestampSec);
 
     if (deferredRepaints.isEmpty())
         return;
@@ -2219,7 +2293,7 @@ void Desktop::setKioskComponent (Component* kioskModeComp, bool enableOrDisable,
 
 void Desktop::allowedOrientationsChanged()
 {
-   #if defined (__IPHONE_16_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_16_0
+   #if JUCE_IOS_API_VERSION_CAN_BE_BUILT (16, 0)
     if (@available (iOS 16.0, *))
     {
         UIApplication* sharedApplication = [UIApplication sharedApplication];
@@ -2297,7 +2371,7 @@ void UIViewComponentPeer::performAnyPendingRepaintsNow()
 
 ComponentPeer* Component::createNewPeer (int styleFlags, void* windowToAttachTo)
 {
-    return new UIViewComponentPeer (*this, styleFlags, (UIView*) windowToAttachTo);
+    return new UIViewComponentPeer (*this, styleFlags, (id) windowToAttachTo);
 }
 
 //==============================================================================

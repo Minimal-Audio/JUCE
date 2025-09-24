@@ -44,7 +44,7 @@
 
   ID:                 juce_dsp
   vendor:             juce
-  version:            8.0.3
+  version:            8.0.10
   name:               JUCE DSP classes
   description:        Classes for audio buffer manipulation, digital audio processing, filtering, oversampling, fast math functions etc.
   website:            http://www.juce.com/juce
@@ -65,9 +65,8 @@
 #define JUCE_DSP_H_INCLUDED
 
 #include <juce_audio_basics/juce_audio_basics.h>
-#include <juce_audio_formats/juce_audio_formats.h>
 
-#if defined (_M_X64) || defined (__amd64__) || defined (__SSE2__) || (defined (_M_IX86_FP) && _M_IX86_FP == 2)
+#if JUCE_INTEL
 
  #if defined (_M_X64) || defined (__amd64__)
   #ifndef __SSE2__
@@ -83,15 +82,29 @@
   #include <immintrin.h>
  #endif
 
-// it's ok to check for _M_ARM below as this is only defined on Windows for Arm 32-bit
-// which has a minimum requirement of armv7, which supports neon.
-#elif defined (__ARM_NEON__) || defined (__ARM_NEON) || defined (__arm64__) || defined (__aarch64__) || defined (_M_ARM) || defined (_M_ARM64)
+#elif JUCE_ARM
 
  #ifndef JUCE_USE_SIMD
-  #define JUCE_USE_SIMD 1
+  #if JUCE_USE_ARM_NEON
+   #define JUCE_USE_SIMD 1
+  #else
+   #define JUCE_USE_SIMD 0
+  #endif
  #endif
 
- #include <arm_neon.h>
+ #if JUCE_USE_SIMD
+  #if JUCE_WINDOWS
+   #if JUCE_64BIT
+    #if ! JUCE_CLANG
+     #include <arm64_neon.h>
+    #endif
+   #else
+    #include <arm_neon.h>
+   #endif
+  #else
+   #include <arm_neon.h>
+  #endif
+ #endif
 
 #else
 
@@ -212,19 +225,19 @@ namespace util
     /** Use this function to prevent denormals on intel CPUs.
         This function will work with both primitives and simple containers.
     */
-  #if JUCE_DSP_ENABLE_SNAP_TO_ZERO
+   #if JUCE_DSP_ENABLE_SNAP_TO_ZERO
     inline void snapToZero (float&       x) noexcept            { JUCE_SNAP_TO_ZERO (x); }
-   #ifndef DOXYGEN
+    /** @cond */
     inline void snapToZero (double&      x) noexcept            { JUCE_SNAP_TO_ZERO (x); }
     inline void snapToZero (long double& x) noexcept            { JUCE_SNAP_TO_ZERO (x); }
-   #endif
-  #else
+    /** @endcond */
+   #else
     inline void snapToZero ([[maybe_unused]] float&       x) noexcept            {}
-   #ifndef DOXYGEN
+    /** @cond */
     inline void snapToZero ([[maybe_unused]] double&      x) noexcept            {}
     inline void snapToZero ([[maybe_unused]] long double& x) noexcept            {}
+    /** @endcond */
    #endif
-  #endif
 }
 
 }
@@ -234,7 +247,7 @@ namespace util
  #include "native/juce_SIMDNativeOps_fallback.h"
 
  // include the correct native file for this build target CPU
- #if defined (__i386__) || defined (__amd64__) || defined (_M_X64) || defined (_X86_) || defined (_M_IX86)
+ #if JUCE_INTEL
   #ifdef __AVX2__
    #include "native/juce_SIMDNativeOps_avx.h"
   #else

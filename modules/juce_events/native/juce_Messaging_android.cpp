@@ -65,7 +65,7 @@ namespace Android
         Handler() : nativeHandler (LocalRef<jobject> (getEnv()->NewObject (AndroidHandler, AndroidHandler.constructor))) {}
         ~Handler() { clearSingletonInstance(); }
 
-        JUCE_DECLARE_SINGLETON (Handler, false)
+        JUCE_DECLARE_SINGLETON_INLINE (Handler, false)
 
         bool post (jobject runnable)
         {
@@ -74,14 +74,12 @@ namespace Android
 
         GlobalRef nativeHandler;
     };
-
-    JUCE_IMPLEMENT_SINGLETON (Handler)
 }
 
 //==============================================================================
 struct AndroidMessageQueue final : private Android::Runnable
 {
-    JUCE_DECLARE_SINGLETON_SINGLETHREADED (AndroidMessageQueue, true)
+    JUCE_DECLARE_SINGLETON_SINGLETHREADED_INLINE (AndroidMessageQueue, true)
 
     AndroidMessageQueue()
         : self (CreateJavaInterface (this, "java/lang/Runnable"))
@@ -123,8 +121,6 @@ private:
     ReferenceCountedArray<MessageManager::MessageBase, CriticalSection> queue;
     Android::Handler handler;
 };
-
-JUCE_IMPLEMENT_SINGLETON (AndroidMessageQueue)
 
 //==============================================================================
 void MessageManager::doPlatformSpecificInitialisation() { AndroidMessageQueue::getInstance(); }
@@ -187,29 +183,6 @@ public:
     JuceAppLifecycle (juce::JUCEApplicationBase* (*initSymbolAddr)())
         : createApplicationSymbol (initSymbolAddr)
     {
-        LocalRef<jobject> appContext (getAppContext());
-
-        if (appContext != nullptr)
-        {
-            auto* env = getEnv();
-
-            myself = GlobalRef (CreateJavaInterface (this, "android/app/Application$ActivityLifecycleCallbacks"));
-            env->CallVoidMethod (appContext.get(), AndroidApplication.registerActivityLifecycleCallbacks, myself.get());
-        }
-    }
-
-    ~JuceAppLifecycle() override
-    {
-        LocalRef<jobject> appContext (getAppContext());
-
-        if (appContext != nullptr && myself != nullptr)
-        {
-            auto* env = getEnv();
-
-            clear();
-            env->CallVoidMethod (appContext.get(), AndroidApplication.unregisterActivityLifecycleCallbacks, myself.get());
-            myself.clear();
-        }
     }
 
     void onActivityCreated (jobject, jobject) override
@@ -296,6 +269,7 @@ private:
     GlobalRef myself;
     juce::JUCEApplicationBase* (*createApplicationSymbol)();
     bool hasBeenInitialised = false;
+    ActivityLifecycleCallbackForwarder forwarder { GlobalRef { getAppContext() }, this };
 };
 
 //==============================================================================

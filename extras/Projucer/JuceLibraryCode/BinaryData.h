@@ -21,7 +21,7 @@ namespace BinaryData
     const int            PIPAudioProcessorWithARA_cpp_inSize = 689;
 
     extern const char*   PIPComponent_cpp_in;
-    const int            PIPComponent_cpp_inSize = 2275;
+    const int            PIPComponent_cpp_inSize = 3231;
 
     extern const char*   PIPConsole_cpp_in;
     const int            PIPConsole_cpp_inSize = 299;
@@ -207,7 +207,7 @@ namespace BinaryData
     const int            colourscheme_light_xmlSize = 1050;
 
     extern const char*   juce_runtime_arch_detection_cpp;
-    const int            juce_runtime_arch_detection_cppSize = 3658;
+    const int            juce_runtime_arch_detection_cppSize = 3575;
 
     extern const char*   juce_LinuxSubprocessHelper_cpp;
     const int            juce_LinuxSubprocessHelper_cppSize = 1865;
