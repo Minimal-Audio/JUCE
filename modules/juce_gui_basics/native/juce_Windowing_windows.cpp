@@ -4806,8 +4806,7 @@ private:
 
 ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
 {
-    // Change the last argument (render engine) back to 1 to re-enable Direct2D - ENG-2487
-    return new HWNDComponentPeer { *this, styleFlags, (HWND) parentHWND, false, 0};
+    return new HWNDComponentPeer { *this, styleFlags, (HWND) parentHWND, false, 1};
 }
 
 Image createSnapshotOfNativeWindow (void* nativeWindowHandle)
