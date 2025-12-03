@@ -994,7 +994,7 @@ public:
                 expectNote (test.getNote (3, 2), 100, 0, 8192, 64, MPENote::keyDown);
             }
             {
-                // pathological case: second note-on for same note should retrigger it.
+                // pathological case: second note-on for same note should retrigger it
                 UnitTestInstrument test;
                 test.setZoneLayout (testLayout);
                 test.noteOn (3, 0, MPEValue::from7BitInt (100));
@@ -1040,7 +1040,7 @@ public:
             test.noteOn (3, 60, MPEValue::from7BitInt (100));  // note in lower zone
             test.noteOn (10, 60, MPEValue::from7BitInt (100));  // note in upper zone
 
-            // sustain pedal on per-note channel shouldn't do anything.
+            // sustain pedal on per-note channel shouldn't do anything
             test.sustainPedal (3, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDown);
 
@@ -1048,13 +1048,13 @@ public:
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectEquals (test.noteKeyStateChangedCallCounter, 0);
 
-            // sustain pedal on non-zone channel shouldn't do anything either.
+            // sustain pedal on non-zone channel shouldn't do anything either
             test.sustainPedal (7, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectEquals (test.noteKeyStateChangedCallCounter, 0);
 
-            // sustain pedal on master channel should sustain notes on _that_ zone.
+            // sustain pedal on master channel should sustain notes on _that_ zone
             test.sustainPedal (1, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDownAndSustained);
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
@@ -1103,19 +1103,19 @@ public:
             test.noteOn (3, 60, MPEValue::from7BitInt (100));  // note in lower zone
             test.noteOn (10, 60, MPEValue::from7BitInt (100));  // note in upper zone
 
-            // sostenuto pedal on per-note channel shouldn't do anything.
+            // sostenuto pedal on per-note channel shouldn't do anything
             test.sostenutoPedal (3, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectEquals (test.noteKeyStateChangedCallCounter, 0);
 
-            // sostenuto pedal on non-zone channel shouldn't do anything either.
+            // sostenuto pedal on non-zone channel shouldn't do anything either
             test.sostenutoPedal (9, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
             expectEquals (test.noteKeyStateChangedCallCounter, 0);
 
-            // sostenuto pedal on master channel should sustain notes on *that* zone.
+            // sostenuto pedal on master channel should sustain notes on *that* zone
             test.sostenutoPedal (1, true);
             expectNote (test.getNote (3, 60), 100, 0, 8192, 64, MPENote::keyDownAndSustained);
             expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
@@ -1198,7 +1198,7 @@ public:
                               MPEValue::centreValue(), MPEValue::centreValue());
 
             {
-                // case 1: the note to exclude is not the most recent one.
+                // case 1: the note to exclude is not the most recent one
 
                 MPEInstrument test;
                 test.setZoneLayout (testLayout);
@@ -1213,7 +1213,7 @@ public:
                 expect (test.getMostRecentNoteOtherThan (testNote).initialNote == 61);
             }
             {
-                // case 2: the note to exclude is the most recent one.
+                // case 2: the note to exclude is the most recent one
 
                 MPEInstrument test;
                 test.setZoneLayout (testLayout);
@@ -1376,7 +1376,7 @@ public:
                 expectNote (test.getNote (10, 60), 100, 0, 8192, 64, MPENote::keyDown);
                 expectEquals (test.notePitchbendChangedCallCounter, 3);
 
-                // applying pitchbend on an unrelated channel should do nothing.
+                // applying pitchbend on an unrelated channel should do nothing
                 test.pitchbend (8, MPEValue::from14BitInt (3333));
                 expectNote (test.getNote (3, 60), 100, 0, 1111, 64, MPENote::keyDown);
                 expectNote (test.getNote (4, 60), 100, 0, 8192, 64, MPENote::keyDown);
@@ -1445,7 +1445,7 @@ public:
                 // - release the note
                 // - press same note again without sending a pitchbend or timbre message before the note-on
                 // - the note should be turned on with a default value for pitchbend/timbre,
-                //   and *not* the last value received on channel.
+                //   and *not* the last value received on channel
 
                 test.noteOn (3, 60, MPEValue::from7BitInt (100));
                 test.pitchbend (3, MPEValue::from14BitInt (5555));
@@ -1941,15 +1941,15 @@ public:
             test.noteOn (15, 63, MPEValue::from7BitInt (100));
             expectEquals (test.getNumPlayingNotes(), 4);
 
-            // on note channel: ignore.
+            // on note channel: ignore
             test.processNextMidiEvent (MidiMessage::allControllersOff (3));
             expectEquals (test.getNumPlayingNotes(), 4);
 
-            // on unused channel: ignore.
+            // on unused channel: ignore
             test.processNextMidiEvent (MidiMessage::allControllersOff (9));
             expectEquals (test.getNumPlayingNotes(), 4);
 
-            // on master channel: release notes in that zone only.
+            // on master channel: release notes in that zone only
             test.processNextMidiEvent (MidiMessage::allControllersOff (1));
             expectEquals (test.getNumPlayingNotes(), 2);
             test.processNextMidiEvent (MidiMessage::allControllersOff (16));
@@ -2139,7 +2139,7 @@ public:
                 }
             }
             {
-                // custom pitchbend range in legacy mode.
+                // custom pitchbend range in legacy mode
                 UnitTestInstrument test;
                 test.enableLegacyMode (11);
 
@@ -2148,7 +2148,7 @@ public:
                 expectDoubleWithinRelativeError (test.getMostRecentNote (1).totalPitchbendInSemitones, -5.5, 0.01);
             }
             {
-                // sustain pedal should be per channel in legacy mode.
+                // sustain pedal should be per channel in legacy mode
                 UnitTestInstrument test;
                 test.enableLegacyMode();
 
@@ -2171,7 +2171,7 @@ public:
 
             }
             {
-                // sostenuto pedal should be per channel in legacy mode.
+                // sostenuto pedal should be per channel in legacy mode
                 UnitTestInstrument test;
                 test.enableLegacyMode();
 
