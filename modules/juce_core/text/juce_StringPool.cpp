@@ -173,6 +173,28 @@ StringPool& StringPool::getGlobalPool() noexcept
     return pool;
 }
 
+std::pair<bool, int> StringPool::locateOrGetInsertIndex (const String& newString, int startIndex, int endIndex) const
+{
+    int start = startIndex;
+    int end = endIndex;
+
+    while (start < end) {
+        const int halfway = (start + end) / 2;
+        const String& halfwayString = strings.getReference (halfway);
+        const int halfwayComp = compareStrings (newString, halfwayString);
+
+        if (halfwayComp == 0)
+            return { true, halfway };
+
+        if (halfwayComp > 0)
+            start = halfway + 1;
+        else
+            end = halfway;
+    }
+
+    return { false, start };
+}
+
 Array<Identifier> StringPool::addSortedStrings (const Array<String>& stringsToAdd)
 {
     // Assert that this is the global pool
@@ -208,7 +230,7 @@ Array<Identifier> StringPool::addSortedStrings (const Array<String>& stringsToAd
         auto [found, insertionIndex] = locateOrGetInsertIndex (startString, 0, strings.size());
 
         if (found) {
-            result.set (start, Identifier (strings.getReference (insertionIndex), true));
+            result.set (start, Identifier::getIdentifierFromInPoolString (strings.getReference (insertionIndex)));
             start++;
             continue;
         }
@@ -244,7 +266,7 @@ Array<Identifier> StringPool::addSortedStrings (const Array<String>& stringsToAd
         strings.insertArray (insertionIndex, stringsToAdd.begin() + start, numElems);
 
         for (int i = 0; i < numElems; i++)
-            result.set (i + start, Identifier (strings.getReference (insertionIndex + i), true));
+            result.set (i + start, Identifier::getIdentifierFromInPoolString (strings.getReference (insertionIndex + i)));
 
         start += numElems;
     }
@@ -260,26 +282,19 @@ Array<Identifier> StringPool::addSortedStrings (const Array<String>& stringsToAd
     return result;
 }
 
-std::pair<bool, int> StringPool::locateOrGetInsertIndex (const String& newString, int startIndex, int endIndex) const
+#if JUCE_DEBUG
+bool StringPool::isStringInPool (const String& str) const noexcept
 {
-    int start = startIndex;
-    int end = endIndex;
+    const ScopedLock sl (lock);
 
-    while (start < end) {
-        const int halfway = (start + end) / 2;
-        const String& halfwayString = strings.getReference (halfway);
-        const int halfwayComp = compareStrings (newString, halfwayString);
+    auto [found, index] = locateOrGetInsertIndex (str, 0, strings.size());
 
-        if (halfwayComp == 0)
-            return { true, halfway };
+    if (!found)
+        return false;
 
-        if (halfwayComp > 0)
-            start = halfway + 1;
-        else
-            end = halfway;
-    }
-
-    return { false, start };
+    // Verify that the character pointers actually match (same string instance)
+    return strings.getReference (index).getCharPointer() == str.getCharPointer();
 }
+#endif
 
 } // namespace juce
