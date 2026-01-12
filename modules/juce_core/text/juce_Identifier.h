@@ -80,8 +80,6 @@ public:
     /** Creates a copy of another identifier. */
     Identifier (Identifier&& other) noexcept;
 
-    /** Creates identifier from a string already in the pool. */
-    Identifier (const String& nm, bool alreadyInPool);
 
     /** Creates a copy of another identifier. */
     Identifier& operator= (Identifier&& other) noexcept;
@@ -139,6 +137,13 @@ public:
         alphanumeric characters, underscores, or the '-' and ':' characters.
     */
     static bool isValidIdentifier (const String& possibleIdentifier) noexcept;
+
+    //==================== MA Additions Start =======================================
+    /** Creates an Identifier from a string that is already in the global string pool.
+        This is an optimization that avoids the pool lookup. The string must already be pooled.
+    */
+    static Identifier getIdentifierFromInPoolString (const String& inPoolString);
+    //==================== MA Additions End =========================================
 
 private:
     String name;

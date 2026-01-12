@@ -88,17 +88,24 @@ public:
     /** Returns a shared global pool which is used for things like Identifiers, XML parsing. */
     static StringPool& getGlobalPool() noexcept;
 
-    //==============================================================================
-    /**
-     * Add a set of sorted strings to the pool and return an array of Identifiers that can be used to access them.
-     * The input array must be sorted and contain no duplicates.
-     */
+    //==================== MA Additions Start =======================================
+    /** Add a set of sorted strings to the pool and return an array of Identifiers that can be used to access them.
+        The input array must be sorted and contain no duplicates.
+    */
     Array<Identifier> addSortedStrings (const Array<String>& stringsToAdd);
+
+#if JUCE_DEBUG
+    /** Check if a string is **in** the pool by comparing character pointers (debug only, no side effects).
+        It does not check if an equivalent string is in the pool, only if **this** instance of the string is in the pool.
+    */
+    bool isStringInPool (const String& str) const noexcept;
+#endif
 
 #if MA_UNIT_TESTS
     /** Returns the underlying array of strings. */
     const Array<String>& getStrings() const noexcept { return strings; }
 #endif
+    //==================== MA Additions End =========================================
 
 private:
 

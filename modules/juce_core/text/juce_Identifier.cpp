@@ -61,24 +61,6 @@ Identifier::Identifier (const String& nm)
     jassert (nm.isNotEmpty());
 }
 
-Identifier::Identifier (const String& nm, bool alreadyInPool)
-: name (nm)
-{
-    // An Identifier cannot be created from an empty string!
-    jassert(nm.isNotEmpty());
-
-    jassertquiet(alreadyInPool);
-
-    // In case this constructor is used incorrectly
-    if (! alreadyInPool)
-        name = StringPool::getGlobalPool().getPooledString (nm);
-
-    jassert (name.getCharPointer() == nm.getCharPointer());
-
-    // Make sure the string is already in the pool
-    jassert (name.getCharPointer() == StringPool::getGlobalPool().getPooledString (name).getCharPointer());
-}
-
 Identifier::Identifier (const char* nm)
     : name (StringPool::getGlobalPool().getPooledString (nm))
 {
@@ -99,6 +81,24 @@ bool Identifier::isValidIdentifier (const String& possibleIdentifier) noexcept
 {
     return possibleIdentifier.isNotEmpty()
             && possibleIdentifier.containsOnly ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-:#@$%");
+}
+
+Identifier Identifier::getIdentifierFromInPoolString (const String& nm)
+{
+    Identifier id;
+
+    // An Identifier cannot be created from an empty string!
+    jassert (nm.isNotEmpty());
+
+    id.name = nm;
+
+    // Verify that both strings point to the same memory location
+    jassert (id.name.getCharPointer() == nm.getCharPointer());
+
+    // Verify that the string is actually in the pool (no side effects)
+    jassert (StringPool::getGlobalPool().isStringInPool (id.name));
+
+    return id;
 }
 
 } // namespace juce
