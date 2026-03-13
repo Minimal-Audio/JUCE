@@ -641,8 +641,7 @@ int NativeImageType::getTypeID() const
     return 1;
 }
 
-/* Allows use of software renderer as native image context, see https://github.com/Minimal-Audio/minimal_core/issues/4013 */
-#if JUCE_LINUX || JUCE_BSD || JUCE_WINDOWS
+#if JUCE_LINUX || JUCE_BSD
 ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int width, int height, bool clearImage) const
 {
     return new SoftwarePixelData (format, width, height, clearImage);
