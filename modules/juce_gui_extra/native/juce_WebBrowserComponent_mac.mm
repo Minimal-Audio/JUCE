@@ -841,9 +841,7 @@ public:
                 [config.get() setURLSchemeHandler:webViewDelegate.get() forURLScheme:@"juce"];
         }
 
-       #if JUCE_DEBUG
         [preferences setValue: @(true) forKey: @"developerExtrasEnabled"];
-       #endif
 
        #if JUCE_MAC
         auto& webviewClass = [&]() -> auto&
@@ -874,6 +872,10 @@ public:
 
         [webView.get() setNavigationDelegate: webViewDelegate.get()];
         [webView.get() setUIDelegate:         webViewDelegate.get()];
+
+        // Enable Safari Web Inspector for debugging (macOS 13.3+)
+        if (@available(macOS 13.3, *))
+            [webView.get() setInspectable: YES];
 
         setView (webView.get());
         owner.owner.addAndMakeVisible (this);
