@@ -1011,19 +1011,6 @@ private:
                                                        (BYTE) bgColour.getBlue() });
         }
 
-       #if JUCE_WIN_PER_MONITOR_DPI_AWARE
-        ComSmartPtr<ICoreWebView2Controller3> controller3;
-        webViewController->QueryInterface (controller3.resetAndGetPointerAddress());
-
-        if (controller3 != nullptr)
-        {
-            controller3->put_ShouldDetectMonitorScaleChanges (TRUE);
-
-            if (auto* peer = owner.getTopLevelComponent()->getPeer())
-                controller3->put_RasterizationScale (peer->getPlatformScaleFactor());
-        }
-       #endif
-
         ComSmartPtr<ICoreWebView2Settings> settings;
         webView->get_Settings (settings.resetAndGetPointerAddress());
 
