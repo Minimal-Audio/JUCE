@@ -1019,9 +1019,11 @@ private:
 
         if (settings != nullptr)
         {
-           #if ! JUCE_DEBUG
-            settings->put_AreDevToolsEnabled (false);
-           #endif
+            // Leave WebView2 DevTools enabled in all build configurations.
+            // Plugins running inside a DAW are inherently a release-build
+            // target, so disabling DevTools in release made the inspector
+            // unreachable in the only environment where developers
+            // actually run them.
 
             settings->put_IsStatusBarEnabled (! preferences.getWinWebView2BackendOptions().getIsStatusBarDisabled());
             settings->put_IsBuiltInErrorPageEnabled (! preferences.getWinWebView2BackendOptions().getIsBuiltInErrorPageDisabled());

@@ -878,9 +878,11 @@ public:
                 [config.get() setURLSchemeHandler:webViewDelegate.get() forURLScheme:@"juce"];
         }
 
-       #if JUCE_DEBUG
+        // Enable the Safari Web Inspector in all build configurations.
+        // Plugins running inside a DAW are inherently a release-build target,
+        // so gating this on JUCE_DEBUG made the inspector unreachable in the
+        // only environment where developers actually run them.
         [preferences setValue: @(true) forKey: @"developerExtrasEnabled"];
-       #endif
 
        #if JUCE_MAC
         auto& webviewClass = [&]() -> auto&
@@ -911,6 +913,68 @@ public:
 
         [webView.get() setNavigationDelegate: webViewDelegate.get()];
         [webView.get() setUIDelegate:         webViewDelegate.get()];
+
+        // The `developerExtrasEnabled` preference above is the legacy path
+        // and remains sufficient on older macOS. From 13.3 / iOS 16.4 onward
+        // Apple requires the public `inspectable` property to be set as well
+        // before Safari's Develop menu will list this WebView.
+        if (@available (macOS 13.3, iOS 16.4, *))
+            [webView.get() setInspectable: YES];
+
+        // Mirrors WinWebView2::withBackgroundColour. Stops WKWebView from
+        // flashing its default opaque background colour before the page has
+        // painted: drawsBackground = NO makes the OS surface transparent so
+        // the JUCE layer beneath composites through, and (on macOS 12+ /
+        // iOS 15+) the public setUnderPageBackgroundColor handles the
+        // overscroll bounce area.
+        //
+        // The KVC trick must target the WKWebView itself, not the
+        // WKWebViewConfiguration — WKWebView copies config values at init
+        // time, so setValue on config after webview creation is a no-op.
+        // `drawsBackground` is undocumented but stable since macOS 10.14
+        // and is what Safari, Xcode and Tauri/wry use.
+        if (const auto bg = browserOptions.getAppleWkWebViewOptions().getBackgroundColour())
+        {
+            @try
+            {
+                [webView.get() setValue: @(NO) forKey: @"drawsBackground"];
+            }
+            @catch (NSException* exception)
+            {
+                // KVC compliance is private API; if a future OS rejects it,
+                // fall back silently rather than crashing the host.
+                (void) exception;
+            }
+
+           #if JUCE_MAC
+            // Belt-and-braces: also tell the underlying NSView's CALayer
+            // not to paint its own opaque background. Some WebKit builds
+            // still flash on the very first frame because the host NSView
+            // composites independently of the WKWebView's drawsBackground.
+            // Setting wantsLayer + a transparent layer background is a
+            // public-API safety net.
+            [webView.get() setWantsLayer: YES];
+            if (auto* layer = [webView.get() layer])
+                layer.backgroundColor = CGColorGetConstantColor (kCGColorClear);
+           #endif
+
+            if (@available (macOS 12.0, iOS 15.0, *))
+            {
+                const auto c = *bg;
+               #if JUCE_MAC
+                auto* colour = [NSColor colorWithSRGBRed: c.getFloatRed()
+                                                   green: c.getFloatGreen()
+                                                    blue: c.getFloatBlue()
+                                                   alpha: c.getFloatAlpha()];
+               #else
+                auto* colour = [UIColor colorWithRed: c.getFloatRed()
+                                               green: c.getFloatGreen()
+                                                blue: c.getFloatBlue()
+                                               alpha: c.getFloatAlpha()];
+               #endif
+                [webView.get() setUnderPageBackgroundColor: colour];
+            }
+        }
 
         setView (webView.get());
         owner.owner.addAndMakeVisible (this);
