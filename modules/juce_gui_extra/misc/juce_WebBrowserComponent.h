@@ -259,12 +259,35 @@ public:
                 return withMember (*this, &AppleWkWebView::acceptsFirstMouse, false);
             }
 
+            /** Sets the background colour that the WKWebView paints underneath all web content.
+
+                By default WKWebView's NSView paints an opaque white background until the page
+                actually renders, which causes a one-frame flash whenever the surface is shown
+                or resized into real bounds. Setting a colour here turns that off so the JUCE
+                layer beneath composites through (transparent / clear colour), or the chosen
+                colour shows in the overscroll area (macOS 12+ / iOS 15+).
+
+                This mirrors the equivalent option on WinWebView2 so cross-platform host code
+                can configure both backends from one place.
+
+                The colour must be either fully opaque or fully transparent.
+            */
+            [[nodiscard]] AppleWkWebView withBackgroundColour (const Colour& colour) const
+            {
+                // the background colour must be either fully opaque or transparent!
+                jassert (colour.isOpaque() || colour.isTransparent());
+
+                return withMember (*this, &AppleWkWebView::backgroundColour, colour);
+            }
+
             auto getAllowAccessToEnclosingDirectory() const { return allowAccessToEnclosingDirectory; }
-            auto getAcceptsFirstMouse() const { return acceptsFirstMouse; }
+            auto getAcceptsFirstMouse() const                { return acceptsFirstMouse; }
+            auto getBackgroundColour() const                 { return backgroundColour; }
 
         private:
             bool allowAccessToEnclosingDirectory = false;
             bool acceptsFirstMouse = true;
+            std::optional<Colour> backgroundColour;
         };
 
         /** Specifies options that apply to the Windows implementation when the WebView2 feature is
