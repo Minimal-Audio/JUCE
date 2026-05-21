@@ -878,9 +878,11 @@ public:
                 [config.get() setURLSchemeHandler:webViewDelegate.get() forURLScheme:@"juce"];
         }
 
-       #if JUCE_DEBUG
+        // Enable the Safari Web Inspector in all build configurations.
+        // Plugins running inside a DAW are inherently a release-build target,
+        // so gating this on JUCE_DEBUG made the inspector unreachable in the
+        // only environment where developers actually run them.
         [preferences setValue: @(true) forKey: @"developerExtrasEnabled"];
-       #endif
 
        #if JUCE_MAC
         auto& webviewClass = [&]() -> auto&
@@ -911,6 +913,13 @@ public:
 
         [webView.get() setNavigationDelegate: webViewDelegate.get()];
         [webView.get() setUIDelegate:         webViewDelegate.get()];
+
+        // The `developerExtrasEnabled` preference above is the legacy path
+        // and remains sufficient on older macOS. From 13.3 / iOS 16.4 onward
+        // Apple requires the public `inspectable` property to be set as well
+        // before Safari's Develop menu will list this WebView.
+        if (@available (macOS 13.3, iOS 16.4, *))
+            [webView.get() setInspectable: YES];
 
         setView (webView.get());
         owner.owner.addAndMakeVisible (this);
