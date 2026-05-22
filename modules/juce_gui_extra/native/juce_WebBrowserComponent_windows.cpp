@@ -668,6 +668,26 @@ public:
 
         auto webViewOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
 
+        // Mirror AppleWkWebView's drawsBackground = NO trick on Windows by
+        // pre-seeding the chromium renderer's default background colour via
+        // the command line. WebView2's runtime-level put_DefaultBackgroundColor
+        // is applied in setWebViewPreferences() *after* the controller is
+        // created, leaving a small window in which the renderer can paint its
+        // default opaque-white frame before our colour takes effect. Setting
+        // the chromium --default-background-color switch on the environment's
+        // additional browser arguments threads the colour through to the
+        // renderer process at launch, so the very first paint already uses it.
+        // Hex format matches chromium's content_switches parser
+        // (#AARRGGBB or AARRGGBB, both accepted).
+        const auto bgColour = options.getWinWebView2BackendOptions().getBackgroundColour();
+        const auto bgArg = String::formatted ("--default-background-color=#%02X%02X%02X%02X",
+                                              bgColour.getAlpha(),
+                                              bgColour.getRed(),
+                                              bgColour.getGreen(),
+                                              bgColour.getBlue());
+
+        webViewOptions->put_AdditionalBrowserArguments (bgArg.toWideCharPointer());
+
         const auto userDataFolder = options.getWinWebView2BackendOptions().getUserDataFolder().getFullPathName();
 
         auto hr = createWebViewEnvironmentWithOptions (nullptr,
