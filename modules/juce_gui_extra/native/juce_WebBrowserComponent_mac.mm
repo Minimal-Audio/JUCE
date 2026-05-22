@@ -176,6 +176,22 @@ static const char* lastFocusChangeMemberName = "lastFocusChangeHandle";
     return getIvar<LastFocusChange*> (instance, lastFocusChangeMemberName);
 }
 
+// Per-instance pointer to the WKWebViewImpl's std::atomic<bool> tracking whether
+// the JS layer has reported editable DOM focus. Read on every key event; when
+// false (the default) the responder forwards keys to the host so the DAW
+// receives transport and shortcut keys instead of WKWebView swallowing them.
+static const char* editableFocusActiveMemberName = "editableFocusActiveHandle";
+
+[[maybe_unused]] static void setEditableFocusActiveHandle (id instance, std::atomic<bool>* flag)
+{
+    object_setInstanceVariable (instance, editableFocusActiveMemberName, flag);
+}
+
+[[maybe_unused]] static std::atomic<bool>* getEditableFocusActiveHandle (id instance)
+{
+    return getIvar<std::atomic<bool>*> (instance, editableFocusActiveMemberName);
+}
+
 #if JUCE_MAC
 template <class WebViewClass>
 struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
@@ -186,10 +202,55 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
         : Base ("WebViewKeyEquivalentResponder_")
     {
         this->template addIvar<LastFocusChange*> (lastFocusChangeMemberName);
+        this->template addIvar<std::atomic<bool>*> (editableFocusActiveMemberName);
+
+        // When an editable DOM element has focus (signalled by JS via
+        // __juceSetEditableFocusActive), keys are routed to WKWebView's default
+        // handlers so character input reaches the DOM. Otherwise we forward them
+        // to the next responder so the plugin host (DAW) receives shortcuts and
+        // MIDI-typing keys. Default is "forward to host" — the OS web surface
+        // would otherwise swallow every keystroke once it became first responder.
+        //
+        // The lambdas passed to addMethod must be captureless so JUCE's
+        // toFnPtr can lower them to plain function pointers, so the
+        // editable-focus read is inlined into each method rather than living
+        // in a local helper closure.
+
+        this->addMethod (@selector (keyDown:),
+                         [] (id self, SEL selector, NSEvent* event)
+                         {
+                             auto* handle = getEditableFocusActiveHandle (self);
+
+                             if (handle != nullptr && handle->load())
+                                 Base::template sendSuperclassMessage<void> (self, selector, event);
+                             else
+                                 [[self nextResponder] keyDown:event];
+                         });
+
+        this->addMethod (@selector (keyUp:),
+                         [] (id self, SEL selector, NSEvent* event)
+                         {
+                             auto* handle = getEditableFocusActiveHandle (self);
+
+                             if (handle != nullptr && handle->load())
+                                 Base::template sendSuperclassMessage<void> (self, selector, event);
+                             else
+                                 [[self nextResponder] keyUp:event];
+                         });
 
         this->addMethod (@selector (performKeyEquivalent:),
                          [] (id self, SEL selector, NSEvent* event)
                          {
+                             // Outside of editable focus, return NO so AppKit walks
+                             // the responder chain past us — that lets host Cmd-shortcuts
+                             // (DAW save, undo, transport variants) reach the plugin
+                             // host instead of being trapped by WKWebView.
+                             auto* handle = getEditableFocusActiveHandle (self);
+                             const bool editableFocusActive = handle != nullptr && handle->load();
+
+                             if (! editableFocusActive)
+                                 return (BOOL) NO;
+
                              const auto isCommandDown = [event]
                              {
                                  const auto modifierFlags = [event modifierFlags];
@@ -702,6 +763,7 @@ public:
                                                           groupName: nsEmptyString()]);
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
+        setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
 
         webView.get().customUserAgent = juceStringToNS (userAgent);
 
@@ -809,9 +871,15 @@ public:
         jassertfalse;
     }
 
+    void setEditableFocusActive (bool active) override
+    {
+        editableFocusActive.store (active, std::memory_order_relaxed);
+    }
+
 private:
     WebBrowserComponent& browser;
     LastFocusChange lastFocusChange;
+    std::atomic<bool> editableFocusActive { false };
     ObjCObjectHandle<WebView*> webView;
     ObjCObjectHandle<id> clickListener;
 };
@@ -903,6 +971,7 @@ public:
                                                       configuration: config.get()]);
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
+        setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
        #else
         webView.reset ([[WKWebView alloc] initWithFrame: CGRectMake (0, 0, 100.0f, 100.0f)
                                           configuration: config.get()]);
@@ -1208,6 +1277,11 @@ public:
                                           }];
     }
 
+    void setEditableFocusActive (bool active) override
+    {
+        editableFocusActive.store (active, std::memory_order_relaxed);
+    }
+
 private:
     static inline auto blankPageUrl = "about:blank";
 
@@ -1215,6 +1289,10 @@ private:
     DelegateConnector delegateConnector;
     bool allowAccessToEnclosingDirectory = false;
     LastFocusChange lastFocusChange;
+    // Default false → keyDown forwards to the host responder chain. Flipped
+    // to true by the JS layer via __juceSetEditableFocusActive when an
+    // editable DOM element gains focus, so character input reaches the DOM.
+    std::atomic<bool> editableFocusActive { false };
     ObjCObjectHandle<WKWebView*> webView;
     ObjCObjectHandle<id> webViewDelegate;
     String lastRequestedUrl, lastLoadedUrl;
