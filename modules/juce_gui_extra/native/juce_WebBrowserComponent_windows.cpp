@@ -995,7 +995,7 @@ private:
             // has reported editable DOM focus we set put_Handled(TRUE) so the
             // WebView keeps the key for in-DOM editing (e.g. Tab to indent,
             // Esc to dismiss a popover). This complements
-            // ICoreWebView2ControllerOptions2::AllowHostInputProcessing, which
+            // ICoreWebView2ControllerOptions4::AllowHostInputProcessing, which
             // covers the character keys (spacebar, QWERTY) that
             // AcceleratorKeyPressed does not fire for.
             webViewController->add_AcceleratorKeyPressed (
@@ -1213,13 +1213,13 @@ private:
                     return E_NOINTERFACE;
                 }
 
-                ComSmartPtr<ICoreWebView2ControllerOptions2> controllerOptions2;
-                controllerOptions.QueryInterface (controllerOptions2);
+                ComSmartPtr<ICoreWebView2ControllerOptions4> controllerOptions4;
+                controllerOptions.QueryInterface (controllerOptions4);
 
-                if (controllerOptions2 == nullptr)
+                if (controllerOptions4 == nullptr)
                     return E_NOINTERFACE;
 
-                if (controllerOptions2->put_AllowHostInputProcessing (TRUE) != S_OK)
+                if (controllerOptions4->put_AllowHostInputProcessing (TRUE) != S_OK)
                     return E_FAIL;
 
                 return environment10->CreateCoreWebView2ControllerWithOptions (hostHwnd,
