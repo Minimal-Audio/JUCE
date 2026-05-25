@@ -668,25 +668,22 @@ public:
 
         auto webViewOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
 
-        // Mirror AppleWkWebView's drawsBackground = NO trick on Windows by
-        // pre-seeding the chromium renderer's default background colour via
-        // the command line. WebView2's runtime-level put_DefaultBackgroundColor
-        // is applied in setWebViewPreferences() *after* the controller is
-        // created, leaving a small window in which the renderer can paint its
-        // default opaque-white frame before our colour takes effect. Setting
-        // the chromium --default-background-color switch on the environment's
-        // additional browser arguments threads the colour through to the
-        // renderer process at launch, so the very first paint already uses it.
-        // Hex format matches chromium's content_switches parser
-        // (#AARRGGBB or AARRGGBB, both accepted).
+        // Apply the configured background colour via WebView2's documented
+        // WEBVIEW2_DEFAULT_BACKGROUND_COLOR environment variable. WebView2's
+        // runtime-level put_DefaultBackgroundColor (called in
+        // setWebViewPreferences) takes effect only after the controller is
+        // created, leaving a window in which the renderer can paint its
+        // default opaque-white frame. The env var is read by the WebView2
+        // runtime when it launches the renderer process, so the very first
+        // frame already uses our colour. Format is 8-digit hex AARRGGBB,
+        // no prefix.
         const auto bgColour = options.getWinWebView2BackendOptions().getBackgroundColour();
-        const auto bgArg = String::formatted ("--default-background-color=#%02X%02X%02X%02X",
+        const auto bgEnv = String::formatted ("%02X%02X%02X%02X",
                                               bgColour.getAlpha(),
                                               bgColour.getRed(),
                                               bgColour.getGreen(),
                                               bgColour.getBlue());
-
-        webViewOptions->put_AdditionalBrowserArguments (bgArg.toWideCharPointer());
+        SetEnvironmentVariableW (L"WEBVIEW2_DEFAULT_BACKGROUND_COLOR", bgEnv.toWideCharPointer());
 
         const auto userDataFolder = options.getWinWebView2BackendOptions().getUserDataFolder().getFullPathName();
 
@@ -1167,6 +1164,24 @@ private:
                                                 {
                                                     webView2ConstructionHelper.associatedWebViewNativeWindows.insert (childWindow);
                                                     AccessibilityHandler::setNativeChildForComponent (*self, childWindow);
+
+                                                    // Replace the WebView2 child HWND's class background brush
+                                                    // with the configured colour. WebView2's class defaults to a
+                                                    // white brush, which the OS paints into the HWND's initial
+                                                    // pixel buffer at creation and on some hide/show paths —
+                                                    // visible as a flash before the renderer composites its first
+                                                    // frame. WEBVIEW2_DEFAULT_BACKGROUND_COLOR handles the
+                                                    // renderer; this handles the HWND beneath it. The descendant
+                                                    // HWNDs (Chrome_WidgetWin_1, Intermediate D3D Window,
+                                                    // Chrome_RenderWidgetHostHWND) are owned by the WebView2
+                                                    // renderer process and SetClassLongPtrW returns
+                                                    // ERROR_ACCESS_DENIED for them, so we only stamp the direct
+                                                    // browser-host child we associated above.
+                                                    const auto bgColour = self->preferences.getWinWebView2BackendOptions().getBackgroundColour();
+                                                    static HBRUSH bgBrush = CreateSolidBrush (RGB (bgColour.getRed(),
+                                                                                                   bgColour.getGreen(),
+                                                                                                   bgColour.getBlue()));
+                                                    SetClassLongPtrW (childWindow, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR> (bgBrush));
                                                 }
                                             }
                                         }
