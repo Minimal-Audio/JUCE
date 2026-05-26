@@ -378,30 +378,10 @@ private:
 class WebBrowserComponent::Impl
 {
 public:
-    Impl (WebBrowserComponent& ownerIn, const Options& optionsInRaw)
+    Impl (WebBrowserComponent& ownerIn, const Options& optionsIn)
         : owner (ownerIn),
           options ([&]
                    {
-                       // Auto-register a native function so JS can flip the editable-focus
-                       // routing without every consumer wiring up their own bridge plumbing.
-                       // Only registered when native integration is already in use — adding
-                       // it unconditionally would force `withNativeIntegrationEnabled` on for
-                       // every WebBrowserComponent, which JUCE flags as a security risk for
-                       // components loading untrusted content.
-                       const bool nativeIntegrationInUse = optionsInRaw.getNativeIntegrationsEnabled()
-                                                          || ! optionsInRaw.getNativeFunctions().empty();
-
-                       const auto optionsIn = nativeIntegrationInUse
-                           ? optionsInRaw.withNativeFunction (
-                                 "__juceSetEditableFocusActive",
-                                 [this] (const Array<var>& args, const std::function<void (var)>& completion)
-                                 {
-                                     if (! args.isEmpty())
-                                         setEditableFocusActive (static_cast<bool> (args[0]));
-                                     completion ({});
-                                 })
-                           : optionsInRaw;
-
                        makeFunctionsProviderIfNecessary (nativeFunctionsProvider, *this, optionsIn);
 
                        if (nativeFunctionsProvider.has_value())
@@ -503,11 +483,6 @@ public:
         platform->focusGainedWithDirection (type, dir);
     }
 
-    void setEditableFocusActive (bool active)
-    {
-        platform->setEditableFocusActive (active);
-    }
-
     struct Platform;
 
 private:
@@ -529,12 +504,6 @@ private:
         virtual void focusGainedWithDirection (FocusChangeType, FocusChangeDirection) {}
         virtual void fallbackPaint (Graphics&) {}
 
-        // Default no-op — platforms that support host keyboard pass-through
-        // (macOS WKWebView, Windows WebView2) override this to flip the
-        // routing of OS-level key events between the host responder chain
-        // and the embedded DOM. See WebBrowserComponent::setEditableFocusActive
-        // for the semantics.
-        virtual void setEditableFocusActive (bool) {}
     };
 
     static void makeFunctionsProviderIfNecessary (std::optional<NativeFunctionsProvider>& provider,
@@ -754,11 +723,6 @@ void WebBrowserComponent::focusGainedWithDirection (FocusChangeType type,
                                                     FocusChangeDirection direction)
 {
     impl->focusGainedWithDirection (type, direction);
-}
-
-void WebBrowserComponent::setEditableFocusActive (bool editableFocusActive)
-{
-    impl->setEditableFocusActive (editableFocusActive);
 }
 
 #endif

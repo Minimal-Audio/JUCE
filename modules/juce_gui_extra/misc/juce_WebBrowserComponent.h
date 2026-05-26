@@ -609,36 +609,6 @@ public:
     */
     void emitEventIfBrowserIsVisible (const Identifier& eventId, const var& object);
 
-    /** Controls whether key events received by the underlying OS web surface should be
-        forwarded to the host responder chain instead of being consumed by the web view.
-
-        When the WebBrowserComponent is hosted inside a plugin, the OS web surface
-        (WKWebView on macOS, WebView2 on Windows) becomes first responder on click and
-        swallows keystrokes — preventing host shortcuts (transport, MIDI typing keyboards,
-        etc.) from reaching the DAW. JUCE's default behaviour is to forward those keys
-        to the host so the DAW remains controllable. Call this with `true` while an
-        editable DOM element (e.g. an `<input>`) has focus so character input reaches
-        the DOM, and `false` again when the editable element loses focus.
-
-        Frontend code can drive this through the auto-registered native function
-        `__juceSetEditableFocusActive`, available via JUCE's `getNativeFunction` helper:
-
-        @code
-        import { getNativeFunction } from 'juce-framework-frontend';
-        const setEditableFocus = getNativeFunction('__juceSetEditableFocusActive');
-        document.addEventListener('focusin', e => {
-            const t = e.target;
-            const editable =
-                t instanceof HTMLInputElement ||
-                t instanceof HTMLTextAreaElement ||
-                t instanceof HTMLSelectElement ||
-                (t instanceof HTMLElement && t.isContentEditable);
-            setEditableFocus(editable);
-        });
-        @endcode
-    */
-    void setEditableFocusActive (bool editableFocusActive);
-
     //==============================================================================
     /** This callback is called when the browser is about to navigate
         to a new location.
