@@ -990,46 +990,6 @@ public:
         if (@available (macOS 13.3, iOS 16.4, *))
             [webView.get() setInspectable: YES];
 
-        // Mirrors WinWebView2::withBackgroundColour. Stops WKWebView from
-        // flashing its default opaque background colour before the page has
-        // painted: drawsBackground = NO makes the OS surface transparent so
-        // the JUCE layer beneath composites through, and (on macOS 12+ /
-        // iOS 15+) the public setUnderPageBackgroundColor handles the
-        // overscroll bounce area. Set on `config` rather than the webview
-        // so the property is in place before the first paint. KVC on
-        // `drawsBackground` is documented private but stable since 10.14 —
-        // this is the same approach Tauri/wry uses (`wry/src/wkwebview/mod.rs`).
-        if (const auto bg = browserOptions.getAppleWkWebViewOptions().getBackgroundColour())
-        {
-            @try
-            {
-                [config.get() setValue: @(NO) forKey: @"drawsBackground"];
-            }
-            @catch (NSException* exception)
-            {
-                // KVC compliance is private API; if a future OS rejects it,
-                // fall back silently rather than crashing the host.
-                (void) exception;
-            }
-
-            if (@available (macOS 12.0, iOS 15.0, *))
-            {
-                const auto c = *bg;
-               #if JUCE_MAC
-                auto* colour = [NSColor colorWithSRGBRed: c.getFloatRed()
-                                                   green: c.getFloatGreen()
-                                                    blue: c.getFloatBlue()
-                                                   alpha: c.getFloatAlpha()];
-               #else
-                auto* colour = [UIColor colorWithRed: c.getFloatRed()
-                                               green: c.getFloatGreen()
-                                                blue: c.getFloatBlue()
-                                               alpha: c.getFloatAlpha()];
-               #endif
-                [webView.get() setUnderPageBackgroundColor: colour];
-            }
-        }
-
         setView (webView.get());
         owner.owner.addAndMakeVisible (this);
     }
