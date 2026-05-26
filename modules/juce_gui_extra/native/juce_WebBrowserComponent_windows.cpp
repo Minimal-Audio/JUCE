@@ -517,11 +517,6 @@ public:
             webViewController->MoveFocus (moveFocusReason);
     }
 
-    void setEditableFocusActive (bool active) override
-    {
-        editableFocusActive.store (active, std::memory_order_relaxed);
-    }
-
     ~WebView2() override
     {
         if (webView2ConstructionHelper.webView2BeingCreated == this)
@@ -983,27 +978,6 @@ private:
 
                     return S_OK;
                 }).Get(), &moveFocusRequestedToken);
-
-            // AcceleratorKeyPressed fires for accelerator keys (Tab, Esc,
-            // F-keys, modifier combos) before WebView2 processes them. Marking
-            // put_Handled(FALSE) yields the key to the host's window proc so
-            // the plugin host (DAW) receives Cmd/Ctrl shortcuts and transport
-            // controls — the default behaviour users expect. When the JS layer
-            // has reported editable DOM focus we set put_Handled(TRUE) so the
-            // WebView keeps the key for in-DOM editing (e.g. Tab to indent,
-            // Esc to dismiss a popover). This complements
-            // ICoreWebView2ControllerOptions4::AllowHostInputProcessing, which
-            // covers the character keys (spacebar, QWERTY) that
-            // AcceleratorKeyPressed does not fire for.
-            webViewController->add_AcceleratorKeyPressed (
-                Callback<ICoreWebView2AcceleratorKeyPressedEventHandler> (
-                    [this] (ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT
-                    {
-                        if (args != nullptr)
-                            args->put_Handled (editableFocusActive.load (std::memory_order_relaxed) ? TRUE : FALSE);
-
-                        return S_OK;
-                    }).Get(), &acceleratorKeyPressedToken);
         }
     }
 
@@ -1037,9 +1011,6 @@ private:
         {
             if (moveFocusRequestedToken.value != 0)
                 webViewController->remove_MoveFocusRequested (moveFocusRequestedToken);
-
-            if (acceleratorKeyPressedToken.value != 0)
-                webViewController->remove_AcceleratorKeyPressed (acceleratorKeyPressedToken);
         }
     }
 
@@ -1203,47 +1174,7 @@ private:
                         return S_OK;
                     });
 
-            // Prefer CreateCoreWebView2ControllerWithOptions so we can enable
-            // AllowHostInputProcessing — that routes keyboard/mouse input
-            // through the host's window proc, letting the plugin host (DAW)
-            // see character keys (spacebar, QWERTY) that WebView2 would
-            // otherwise consume entirely. AcceleratorKeyPressed handles the
-            // accelerator-key subset for runtimes/SDKs that don't expose the
-            // option. Falling back to the plain Create function keeps the
-            // backend working when either the environment (older runtime) or
-            // the controller options (older SDK) interface is unavailable.
-            const auto createWithHostInputProcessing = [&]() -> HRESULT
-            {
-                ComSmartPtr<ICoreWebView2Environment10> environment10;
-                webViewHandle.environment.QueryInterface (environment10);
-
-                if (environment10 == nullptr)
-                    return E_NOINTERFACE;
-
-                ComSmartPtr<ICoreWebView2ControllerOptions> controllerOptions;
-
-                if (environment10->CreateCoreWebView2ControllerOptions (controllerOptions.resetAndGetPointerAddress()) != S_OK
-                    || controllerOptions == nullptr)
-                {
-                    return E_NOINTERFACE;
-                }
-
-                ComSmartPtr<ICoreWebView2ControllerOptions4> controllerOptions4;
-                controllerOptions.QueryInterface (controllerOptions4);
-
-                if (controllerOptions4 == nullptr)
-                    return E_NOINTERFACE;
-
-                if (controllerOptions4->put_AllowHostInputProcessing (TRUE) != S_OK)
-                    return E_FAIL;
-
-                return environment10->CreateCoreWebView2ControllerWithOptions (hostHwnd,
-                                                                               controllerOptions.get(),
-                                                                               completionHandler.Get());
-            }();
-
-            if (! SUCCEEDED (createWithHostInputProcessing))
-                webViewHandle.environment->CreateCoreWebView2Controller (hostHwnd, completionHandler.Get());
+            webViewHandle.environment->CreateCoreWebView2Controller (hostHwnd, completionHandler.Get());
         }
     }
 
@@ -1318,16 +1249,9 @@ private:
                            navigationCompletedToken   { 0 },
                            webResourceRequestedToken  { 0 },
                            moveFocusRequestedToken    { 0 },
-                           webMessageReceivedToken    { 0 },
-                           acceleratorKeyPressedToken { 0 };
+                           webMessageReceivedToken    { 0 };
 
     bool inMoveFocusRequested = false;
-
-    // Default false → AcceleratorKeyPressed releases keys to the host's window
-    // proc so the DAW receives shortcuts. Flipped to true by the JS layer via
-    // __juceSetEditableFocusActive whenever an editable DOM element gains
-    // focus, so the WebView retains keys for in-DOM editing.
-    std::atomic<bool> editableFocusActive { false };
 
     struct URLRequest
     {
