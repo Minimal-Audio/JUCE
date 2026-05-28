@@ -254,12 +254,22 @@ public:
     /** Returns true if the caller code is in the middle of an undo or redo action. */
     bool isPerformingUndoRedo() const;
 
+    /** Returns a monotonically-increasing identifier for the current transaction.
+
+        The ID is bumped every time beginNewTransaction() is called (including the
+        implicit calls inside undo() and redo()). Capture it before a sequence of
+        perform() calls and compare later to verify they all landed in the same
+        transaction.
+    */
+    std::uint64_t getCurrentTransactionID() const;
+
 private:
     //==============================================================================
     struct ActionSet;
     OwnedArray<ActionSet> transactions, stashedFutureTransactions;
     String newTransactionName;
     int totalUnitsStored = 0, maxNumUnitsToKeep = 0, minimumTransactionsToKeep = 0, nextIndex = 0;
+    std::uint64_t currentTransactionID = 0;
     bool newTransaction = true, isInsideUndoRedoCall = false;
     ActionSet* getCurrentSet() const;
     ActionSet* getNextSet() const;
