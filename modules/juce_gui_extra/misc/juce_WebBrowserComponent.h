@@ -280,14 +280,37 @@ public:
                 return withMember (*this, &AppleWkWebView::backgroundColour, colour);
             }
 
+            /** Forces the WKWebView to rasterise its content at no less than this device
+                scale factor, regardless of the backing scale of the display it sits on.
+
+                On a standard-DPI (1x) display the WebView otherwise renders one device
+                pixel per CSS pixel. If the host then scales the editor up (e.g. via an
+                ancestor AffineTransform that enlarges the WebView's peer bounds), the OS
+                upscales that 1x raster and the content looks soft — most visibly text.
+                Raising the effective device scale gives the renderer headroom so the
+                upscale stays sharp. A high-DPI (Retina) display already exceeds this, so
+                it is a floor, not a fixed value.
+
+                This affects rasterisation density and window.devicePixelRatio only — CSS
+                layout is unchanged, so it cannot shift or reflow the UI. Implemented via a
+                private WKWebView SPI and re-applied on display moves; silently ignored if
+                the running OS doesn't expose it.
+            */
+            [[nodiscard]] AppleWkWebView withMinimumDeviceScaleFactor (double scale) const
+            {
+                return withMember (*this, &AppleWkWebView::minimumDeviceScaleFactor, scale);
+            }
+
             auto getAllowAccessToEnclosingDirectory() const { return allowAccessToEnclosingDirectory; }
             auto getAcceptsFirstMouse() const                { return acceptsFirstMouse; }
             auto getBackgroundColour() const                 { return backgroundColour; }
+            auto getMinimumDeviceScaleFactor() const         { return minimumDeviceScaleFactor; }
 
         private:
             bool allowAccessToEnclosingDirectory = false;
             bool acceptsFirstMouse = true;
             std::optional<Colour> backgroundColour;
+            std::optional<double> minimumDeviceScaleFactor;
         };
 
         /** Specifies options that apply to the Windows implementation when the WebView2 feature is

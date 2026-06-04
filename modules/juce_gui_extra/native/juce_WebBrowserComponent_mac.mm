@@ -193,6 +193,23 @@ static const char* editableFocusActiveMemberName = "editableFocusActiveHandle";
 }
 
 #if JUCE_MAC
+// Per-instance pointer to the WKWebViewImpl's minimum-device-scale value (0 = feature
+// off). Read in viewDidChangeBackingProperties so the override is (re)applied as the
+// window attaches and as it moves between displays of differing backingScaleFactor.
+static const char* minDeviceScaleMemberName = "minDeviceScaleHandle";
+
+[[maybe_unused]] static void setMinDeviceScaleHandle (id instance, double* value)
+{
+    object_setInstanceVariable (instance, minDeviceScaleMemberName, value);
+}
+
+[[maybe_unused]] static double* getMinDeviceScaleHandle (id instance)
+{
+    return getIvar<double*> (instance, minDeviceScaleMemberName);
+}
+#endif
+
+#if JUCE_MAC
 template <class WebViewClass>
 struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
 {
@@ -203,6 +220,7 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
     {
         this->template addIvar<LastFocusChange*> (lastFocusChangeMemberName);
         this->template addIvar<std::atomic<bool>*> (editableFocusActiveMemberName);
+        this->template addIvar<double*> (minDeviceScaleMemberName);
 
         // When an editable DOM element has focus (signalled by JS via
         // __juceSetEditableFocusActive), keys are routed to WKWebView's default
@@ -354,6 +372,41 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
 
                              if (CALayer* layer = [(NSView*) self layer])
                                  layer.contentsScale = scale;
+
+                             // Optional rasterisation-density floor (withMinimumDeviceScaleFactor).
+                             // Re-applied here so it survives moves between displays of differing
+                             // backingScaleFactor. We never go below the display's own backing
+                             // scale, so a Retina screen is unaffected. Affects raster density and
+                             // window.devicePixelRatio only — not CSS layout.
+                             if (double* minScale = getMinDeviceScaleHandle (self);
+                                 minScale != nullptr && *minScale > 0.0)
+                             {
+                                 const CGFloat effective = jmax ((CGFloat) *minScale, scale);
+
+                                 // _setOverrideDeviceScaleFactor: is private WKWebView SPI,
+                                 // so it isn't in any public header — call it through a
+                                 // cast objc_msgSend rather than declaring a category (an
+                                 // @interface can't live inside this namespace). Guarded by
+                                 // respondsToSelector + @try so a future OS that drops it is
+                                 // a silent no-op rather than a crash.
+                                 JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wundeclared-selector")
+                                 const SEL overrideSel = @selector (_setOverrideDeviceScaleFactor:);
+                                 JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+
+                                 if ([(NSView*) self respondsToSelector: overrideSel])
+                                 {
+                                     @try
+                                     {
+                                         using SetScaleFn = void (*) (id, SEL, CGFloat);
+                                         const auto setScale = reinterpret_cast<SetScaleFn> (objc_msgSend);
+                                         setScale (self, overrideSel, effective);
+                                     }
+                                     @catch (NSException* exception)
+                                     {
+                                         (void) exception;
+                                     }
+                                 }
+                             }
                          });
 
         if (acceptsFirstMouse)
@@ -1004,6 +1057,15 @@ public:
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
         setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
+
+        // Rasterisation-density floor (off unless withMinimumDeviceScaleFactor is set).
+        // The override is actually applied in viewDidChangeBackingProperties, which
+        // fires when the view attaches to a window and on every display move, so the
+        // handle must be in place before addAndMakeVisible below.
+        minDeviceScaleFactor = browserOptions.getAppleWkWebViewOptions()
+                                             .getMinimumDeviceScaleFactor()
+                                             .value_or (0.0);
+        setMinDeviceScaleHandle (webView.get(), &minDeviceScaleFactor);
        #else
         webView.reset ([[WKWebView alloc] initWithFrame: CGRectMake (0, 0, 100.0f, 100.0f)
                                           configuration: config.get()]);
@@ -1325,6 +1387,11 @@ private:
     // to true by the JS layer via __juceSetEditableFocusActive when an
     // editable DOM element gains focus, so character input reaches the DOM.
     std::atomic<bool> editableFocusActive { false };
+    // Rasterisation-density floor (withMinimumDeviceScaleFactor); 0 = off. Held by
+    // value so the WKWebView subclass can read it through a per-instance handle in
+    // viewDidChangeBackingProperties. Must outlive the webView — it does, both are
+    // members of this impl.
+    double minDeviceScaleFactor = 0.0;
     ObjCObjectHandle<WKWebView*> webView;
     ObjCObjectHandle<id> webViewDelegate;
     String lastRequestedUrl, lastLoadedUrl;
