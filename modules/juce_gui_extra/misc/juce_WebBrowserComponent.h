@@ -216,18 +216,42 @@ public:
                 return withMember (*this, &WinWebView2::backgroundColour, colour);
             }
 
+            /** Forces WebView2 to rasterise its content at no less than this scale, regardless
+                of the monitor's DPI scaling.
+
+                The counterpart to AppleWkWebView::withMinimumDeviceScaleFactor. On a display
+                at 100% scaling WebView2 otherwise rasterises at one device pixel per CSS pixel;
+                if the host scales the editor up via an ancestor AffineTransform (which enlarges
+                the WebView's bounds without changing its CSS layout), the OS upscales that 1x
+                raster and the content looks soft — most visibly text. Raising the floor gives
+                the renderer headroom so the upscale stays sharp. A high-DPI monitor already
+                exceeds this, so it is a floor, not a fixed value.
+
+                Implemented via ICoreWebView2Controller3::put_RasterizationScale, with monitor
+                auto-detection disabled so the floor isn't reset on DPI changes (it is re-applied
+                with the live monitor scale instead). Note that raising RasterizationScale also
+                shrinks the CSS layout viewport (CSS px = bounds / scale), so this is only
+                appropriate for content that lays out responsively to its viewport.
+            */
+            [[nodiscard]] WinWebView2 withMinimumDeviceScaleFactor (double scale) const
+            {
+                return withMember (*this, &WinWebView2::minimumDeviceScaleFactor, scale);
+            }
+
             //==============================================================================
             File getDLLLocation() const                          { return dllLocation; }
             File getUserDataFolder() const                       { return userDataFolder; }
             bool getIsStatusBarDisabled() const noexcept         { return disableStatusBar; }
             bool getIsBuiltInErrorPageDisabled() const noexcept  { return disableBuiltInErrorPage; }
             Colour getBackgroundColour() const                   { return backgroundColour; }
+            auto getMinimumDeviceScaleFactor() const             { return minimumDeviceScaleFactor; }
 
         private:
             //==============================================================================
             File dllLocation, userDataFolder;
             bool disableStatusBar = false, disableBuiltInErrorPage = false;
             Colour backgroundColour;
+            std::optional<double> minimumDeviceScaleFactor;
         };
 
         /** Options specific to the WkWebView backend used on Apple systems. These options will be

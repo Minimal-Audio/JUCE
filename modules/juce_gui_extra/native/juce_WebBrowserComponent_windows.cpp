@@ -1031,6 +1031,8 @@ private:
                                                        (BYTE) bgColour.getBlue() });
         }
 
+        applyRasterizationScaleFloor();
+
         ComSmartPtr<ICoreWebView2Settings> settings;
         webView->get_Settings (settings.resetAndGetPointerAddress());
 
@@ -1233,6 +1235,38 @@ private:
             webViewController->put_IsVisible (shouldBeVisible);
     }
 
+    // Floors the WebView's rasterisation scale (withMinimumDeviceScaleFactor). Off
+    // unless the option is set. On a 100%-scaled monitor the content otherwise
+    // rasterises at one device pixel per CSS pixel, so when the host scales the
+    // editor up via an ancestor transform the OS upscales a 1x raster and the UI
+    // (most visibly text) looks blurry. We set RasterizationScale to at least the
+    // requested floor and disable WebView2's own monitor-scale detection so it
+    // doesn't reset us on DPI changes — re-applied from the scale-factor notifier
+    // with the live monitor scale instead. Requires the WebView2 runtime to support
+    // ICoreWebView2Controller3; a no-op on older runtimes.
+    void applyRasterizationScaleFloor() const
+    {
+        const auto minScale = preferences.getWinWebView2BackendOptions().getMinimumDeviceScaleFactor();
+
+        if (! minScale.has_value() || webViewController == nullptr)
+            return;
+
+        ComSmartPtr<ICoreWebView2Controller3> controller3;
+        webViewController->QueryInterface (controller3.resetAndGetPointerAddress());
+
+        if (controller3 == nullptr)
+            return;
+
+        controller3->put_ShouldDetectMonitorScaleChanges (FALSE);
+
+        auto monitorScale = 1.0;
+
+        if (auto* peer = owner.getTopLevelComponent()->getPeer())
+            monitorScale = peer->getPlatformScaleFactor();
+
+        controller3->put_RasterizationScale (jmax (*minScale, monitorScale));
+    }
+
     //==============================================================================
     WebBrowserComponent& owner;
     WebBrowserComponent::Options preferences;
@@ -1275,6 +1309,10 @@ private:
     NativeScaleFactorNotifier scaleFactorNotifier { this,
                                                     [this] (auto)
                                                     {
+                                                        // Re-apply the rasterisation floor against the new
+                                                        // monitor scale (auto-detection is off when the floor
+                                                        // is in use), then refresh bounds.
+                                                        applyRasterizationScaleFloor();
                                                         componentMovedOrResized (true, true);
                                                     } };
 
