@@ -1047,17 +1047,17 @@ public:
                 (void) exception;
             }
 
-           #if JUCE_MAC
-            // Belt-and-braces: also tell the underlying NSView's CALayer
-            // not to paint its own opaque background. Some WebKit builds
-            // still flash on the very first frame because the host NSView
-            // composites independently of the WKWebView's drawsBackground.
-            // Setting wantsLayer + a transparent layer background is a
-            // public-API safety net.
-            [webView.get() setWantsLayer: YES];
-            if (auto* layer = [webView.get() layer])
-                layer.backgroundColor = CGColorGetConstantColor (kCGColorClear);
-           #endif
+            // Note: we deliberately do NOT promote the WKWebView to a
+            // layer-backed view (setWantsLayer:YES) or stamp a transparent
+            // layer.backgroundColor here. That promotion pins the view's
+            // root-layer contentsScale at creation time, so moving the host
+            // window to a display with a different backingScaleFactor leaves
+            // high-DPI content composited into a stale backing and reading as
+            // blurry on the secondary monitor. Left layer-hosting (the WKWebView
+            // default, as used by CHOC/wry/Safari), WebKit keeps the backing
+            // scale in sync across display moves on its own. drawsBackground = NO
+            // plus setUnderPageBackgroundColor below is enough to kill the
+            // first-paint flash without touching the layer.
 
             if (@available (macOS 12.0, iOS 15.0, *))
             {
