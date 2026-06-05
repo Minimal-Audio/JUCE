@@ -324,37 +324,12 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
                             return result;
                          });
 
-        // When the host window moves between displays of different
-        // backingScaleFactor (Retina ↔ non-Retina, or two Retina displays
-        // at different scales), the WKWebView's root CALayer doesn't
-        // always pick up the new contentsScale. AppKit auto-syncs this
-        // for views it created in layer-backed mode, but WKWebView is
-        // layer-hosting by default; once it's been promoted via
-        // setWantsLayer:YES + explicit layer.backgroundColor (the
-        // transparency hack for the first-paint white-flash fix), the
-        // outer layer's contentsScale stays pinned to whatever it was at
-        // view creation. The renderer then composites high-DPI content
-        // into a 1× backing and the result reads as pixelated on Retina.
-        //
-        // Override viewDidChangeBackingProperties so we always re-stamp
-        // the root layer's contentsScale to match the current window's
-        // backingScaleFactor. super still runs first so WKWebView's
-        // internal layer-tree handling continues to apply.
-        this->addMethod (@selector (viewDidChangeBackingProperties),
-                         [] (id self, SEL selector)
-                         {
-                             Base::template sendSuperclassMessage<void> (self, selector);
-
-                             NSWindow* window = [(NSView*) self window];
-
-                             if (window == nil)
-                                 return;
-
-                             const CGFloat scale = window.backingScaleFactor;
-
-                             if (CALayer* layer = [(NSView*) self layer])
-                                 layer.contentsScale = scale;
-                         });
+        // We intentionally do NOT override viewDidChangeBackingProperties to stamp
+        // layer.contentsScale (matching JUCE master). An earlier override force-set
+        // contentsScale = backingScaleFactor; it was added to counter the since-removed
+        // setWantsLayer:YES flash hack, but on the now layer-hosting WKWebView it clamped
+        // WebKit's root-layer raster scale and left CSS-transform-scaled content blurry on
+        // low-DPI displays. Letting WebKit manage contentsScale renders sharply.
 
         if (acceptsFirstMouse)
             this->addMethod (@selector (acceptsFirstMouse:), [] (id, SEL, NSEvent*) { return YES; });
