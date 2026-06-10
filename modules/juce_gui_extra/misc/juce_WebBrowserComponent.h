@@ -216,18 +216,38 @@ public:
                 return withMember (*this, &WinWebView2::backgroundColour, colour);
             }
 
+            /** Floors the WebView's effective render scale so content stays sharp when the
+                host scales the editor up on a low-DPI (100%) display. The counterpart to
+                AppleWkWebView::withMinimumDeviceScaleFactor.
+
+                Implemented with the public ICoreWebView2Controller3::RasterizationScale,
+                which (unlike ZoomFactor) rasterises content at the target resolution rather
+                than scaling an already-rendered bitmap. Set to max(scale, monitorScale), with
+                monitor auto-detection disabled so the floor isn't reset on DPI changes (it is
+                re-applied with the live monitor scale instead). Raising RasterizationScale
+                also shrinks the CSS layout viewport (CSS px = bounds / scale), so this is only
+                appropriate for content that lays out responsively. No-op on WebView2 runtimes
+                without ICoreWebView2Controller3.
+            */
+            [[nodiscard]] WinWebView2 withMinimumDeviceScaleFactor (double scale) const
+            {
+                return withMember (*this, &WinWebView2::minimumDeviceScaleFactor, scale);
+            }
+
             //==============================================================================
             File getDLLLocation() const                          { return dllLocation; }
             File getUserDataFolder() const                       { return userDataFolder; }
             bool getIsStatusBarDisabled() const noexcept         { return disableStatusBar; }
             bool getIsBuiltInErrorPageDisabled() const noexcept  { return disableBuiltInErrorPage; }
             Colour getBackgroundColour() const                   { return backgroundColour; }
+            auto getMinimumDeviceScaleFactor() const             { return minimumDeviceScaleFactor; }
 
         private:
             //==============================================================================
             File dllLocation, userDataFolder;
             bool disableStatusBar = false, disableBuiltInErrorPage = false;
             Colour backgroundColour;
+            std::optional<double> minimumDeviceScaleFactor;
         };
 
         /** Options specific to the WkWebView backend used on Apple systems. These options will be
@@ -280,14 +300,36 @@ public:
                 return withMember (*this, &AppleWkWebView::backgroundColour, colour);
             }
 
+            /** Floors the WebView's effective render scale so content stays sharp when the
+                host scales the editor up on a low-DPI (non-Retina) display.
+
+                When the host enlarges the WebView via an ancestor AffineTransform (which
+                grows the WebView's bounds without changing its CSS layout) on a 1x display,
+                the OS upscales a 1x raster and the content — most visibly text — looks soft.
+                A Retina display already rasterises at 2x and hides it.
+
+                Implemented with the public WKWebView.pageZoom property (macOS 11+): page zoom
+                re-lays-out and re-rasterises at the zoomed size, so glyphs stay crisp. The
+                applied zoom is max(1, scale / backingScaleFactor), so a Retina display is a
+                no-op and only low-DPI displays get supersampling. Page zoom shrinks the CSS
+                layout viewport (the page sees fewer CSS px), so this is only appropriate for
+                content that lays out responsively to its viewport. No-op below macOS 11.
+            */
+            [[nodiscard]] AppleWkWebView withMinimumDeviceScaleFactor (double scale) const
+            {
+                return withMember (*this, &AppleWkWebView::minimumDeviceScaleFactor, scale);
+            }
+
             auto getAllowAccessToEnclosingDirectory() const { return allowAccessToEnclosingDirectory; }
             auto getAcceptsFirstMouse() const                { return acceptsFirstMouse; }
             auto getBackgroundColour() const                 { return backgroundColour; }
+            auto getMinimumDeviceScaleFactor() const         { return minimumDeviceScaleFactor; }
 
         private:
             bool allowAccessToEnclosingDirectory = false;
             bool acceptsFirstMouse = true;
             std::optional<Colour> backgroundColour;
+            std::optional<double> minimumDeviceScaleFactor;
         };
 
         /** Specifies options that apply to the Windows implementation when the WebView2 feature is

@@ -192,6 +192,21 @@ static const char* editableFocusActiveMemberName = "editableFocusActiveHandle";
     return getIvar<std::atomic<bool>*> (instance, editableFocusActiveMemberName);
 }
 
+// Per-instance pointer to the WKWebViewImpl's minimum-render-scale value (0 = feature
+// off). Read in viewDidChangeBackingProperties so pageZoom is (re)applied as the window
+// attaches and as it moves between displays of differing backingScaleFactor.
+static const char* minDeviceScaleMemberName = "minDeviceScaleHandle";
+
+[[maybe_unused]] static void setMinDeviceScaleHandle (id instance, double* value)
+{
+    object_setInstanceVariable (instance, minDeviceScaleMemberName, value);
+}
+
+[[maybe_unused]] static double* getMinDeviceScaleHandle (id instance)
+{
+    return getIvar<double*> (instance, minDeviceScaleMemberName);
+}
+
 #if JUCE_MAC
 template <class WebViewClass>
 struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
@@ -203,6 +218,7 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
     {
         this->template addIvar<LastFocusChange*> (lastFocusChangeMemberName);
         this->template addIvar<std::atomic<bool>*> (editableFocusActiveMemberName);
+        this->template addIvar<double*> (minDeviceScaleMemberName);
 
         // When an editable DOM element has focus (signalled by JS via
         // __juceSetEditableFocusActive), keys are routed to WKWebView's default
@@ -354,6 +370,23 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
 
                              if (CALayer* layer = [(NSView*) self layer])
                                  layer.contentsScale = scale;
+
+                             // Optional render-scale floor (withMinimumDeviceScaleFactor). We
+                             // raise WKWebView.pageZoom (public, macOS 11+) so the page renders
+                             // at a higher density; the consumer's responsive layout absorbs the
+                             // resulting CSS-viewport shrink. Applied zoom is max(1, min/backing)
+                             // so a Retina display (backing >= min) is a no-op. Re-applied here
+                             // so it tracks moves between displays of differing backingScaleFactor.
+                             if (double* minScale = getMinDeviceScaleHandle (self);
+                                 minScale != nullptr && *minScale > 0.0)
+                             {
+                                 const CGFloat backing = jmax ((CGFloat) 1.0, scale);
+                                 const CGFloat zoom    = jmax ((CGFloat) 1.0, (CGFloat) (*minScale) / backing);
+
+                                 if (@available (macOS 11.0, *))
+                                     if ([self isKindOfClass: [WKWebView class]])
+                                         ((WKWebView*) self).pageZoom = zoom;
+                             }
                          });
 
         if (acceptsFirstMouse)
@@ -1004,6 +1037,14 @@ public:
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
         setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
+
+        // Render-scale floor (off unless withMinimumDeviceScaleFactor is set). Applied via
+        // pageZoom in viewDidChangeBackingProperties, which fires on window-attach and on
+        // display moves, so the handle must be in place before addAndMakeVisible.
+        minDeviceScaleFactor = browserOptions.getAppleWkWebViewOptions()
+                                             .getMinimumDeviceScaleFactor()
+                                             .value_or (0.0);
+        setMinDeviceScaleHandle (webView.get(), &minDeviceScaleFactor);
        #else
         webView.reset ([[WKWebView alloc] initWithFrame: CGRectMake (0, 0, 100.0f, 100.0f)
                                           configuration: config.get()]);
@@ -1325,6 +1366,10 @@ private:
     // to true by the JS layer via __juceSetEditableFocusActive when an
     // editable DOM element gains focus, so character input reaches the DOM.
     std::atomic<bool> editableFocusActive { false };
+    // Render-scale floor (withMinimumDeviceScaleFactor); 0 = off. Held by value so the
+    // WKWebView subclass can read it through a per-instance handle in
+    // viewDidChangeBackingProperties. Outlives the webView — both are members here.
+    double minDeviceScaleFactor = 0.0;
     ObjCObjectHandle<WKWebView*> webView;
     ObjCObjectHandle<id> webViewDelegate;
     String lastRequestedUrl, lastLoadedUrl;
