@@ -432,17 +432,35 @@ static ComSmartPtr<ID2D1GradientStopCollection> makeGradientStopCollection (cons
     return result;
 }
 
+// Minimal Audio modification start
+// Build the colour-only cache key (position + native ARGB per stop), matching the
+// colour precision of ColourGradient::tie(). Coordinates are intentionally excluded
+// because getBrush() re-applies them on every draw.
+static GradientColourKey makeGradientColourKey (const ColourGradient& gradient)
+{
+    const int num = gradient.getNumColours();
+    GradientColourKey key;
+    key.reserve ((size_t) num);
+    for (int i = 0; i < num; ++i)
+        key.emplace_back (gradient.getColourPosition (i),
+                          (uint32) gradient.getColour (i).getPixelARGB().getNativeARGB());
+    return key;
+}
+// Minimal Audio modification end
+
 ComSmartPtr<ID2D1LinearGradientBrush> LinearGradientCache::get (const ColourGradient& gradient,
                                                                 ComSmartPtr<ID2D1DeviceContext1> deviceContext,
                                                                 Direct2DMetrics* metrics)
 {
     jassert (! gradient.isRadial);
 
-    return cache.get (gradient, [&deviceContext, &metrics] (const auto& key)
+    // Minimal Audio modification start (key is colour-only; geometry re-applied per draw in getBrush())
+    return cache.get (makeGradientColourKey (gradient), [&gradient, &deviceContext, &metrics] (const auto&)
     {
-        const auto gradientStops = makeGradientStopCollection (key, deviceContext, metrics);
-        const auto p1 = key.point1;
-        const auto p2 = key.point2;
+        const auto gradientStops = makeGradientStopCollection (gradient, deviceContext, metrics);
+        const auto p1 = gradient.point1;
+        const auto p2 = gradient.point2;
+        // Minimal Audio modification end
         const auto linearGradientBrushProperties = D2D1::LinearGradientBrushProperties ({ p1.x, p1.y }, { p2.x, p2.y });
         const D2D1_BRUSH_PROPERTIES brushProps { 1.0f, D2D1::IdentityMatrix() };
 
@@ -461,12 +479,14 @@ ComSmartPtr<ID2D1RadialGradientBrush> RadialGradientCache::get (const ColourGrad
 {
     jassert (gradient.isRadial);
 
-    return cache.get (gradient, [&deviceContext, &metrics] (const auto& key)
+    // Minimal Audio modification start (key is colour-only; geometry re-applied per draw in getBrush())
+    return cache.get (makeGradientColourKey (gradient), [&gradient, &deviceContext, &metrics] (const auto&)
     {
-        const auto gradientStops = makeGradientStopCollection (key, deviceContext, metrics);
+        const auto gradientStops = makeGradientStopCollection (gradient, deviceContext, metrics);
 
-        const auto p1 = key.point1;
-        const auto p2 = key.point2;
+        const auto p1 = gradient.point1;
+        const auto p2 = gradient.point2;
+        // Minimal Audio modification end
         const auto r = p1.getDistanceFrom (p2);
         const auto radialGradientBrushProperties = D2D1::RadialGradientBrushProperties ({ p1.x, p1.y }, {}, r, r);
         const D2D1_BRUSH_PROPERTIES brushProps { 1.0F, D2D1::IdentityMatrix() };
