@@ -110,6 +110,17 @@ public:
 
         chain2->SetMaximumFrameLatency (1);
 
+        // Minimal Audio modification start (non-blocking frame-latency wait)
+        // Fetch the frame latency waitable object so that isFrameSlotAvailable() can check for a
+        // free present slot without blocking. If the handle can't be fetched, swapChainEvent stays
+        // empty and we fall back to the previous behaviour, where Present1 blocks the message
+        // thread whenever the maximum frame latency has been reached.
+        swapChainEvent.reset();
+
+        if (auto* handle = chain2->GetFrameLatencyWaitableObject(); handle != nullptr && handle != INVALID_HANDLE_VALUE)
+            swapChainEvent.emplace (handle);
+        // Minimal Audio modification end
+
         createBuffer (adapter);
         return buffer != nullptr ? S_OK : E_FAIL;
     }
@@ -118,6 +129,64 @@ public:
     {
         return chain != nullptr && buffer != nullptr;
     }
+
+    // Minimal Audio modification start (non-blocking frame-latency wait)
+    /*  The frame latency waitable object is a semaphore that is decremented by waiting on it, and
+        incremented whenever a present leaves the present queue. With a maximum frame latency of 1,
+        painting without checking it means that Present1 will block the message thread whenever the
+        previous frame hasn't been displayed yet - on slow GPUs that stalls the message thread on
+        nearly every frame, so mouse input visibly trails the cursor.
+
+        Instead, isFrameSlotAvailable() is checked (with a zero timeout) before painting a frame;
+        when no present slot is free, the frame is deferred to the next vblank and the dirty
+        regions accumulate.
+
+        A successful wait consumes one semaphore count, so it must be followed by exactly one
+        present; frameSlotOwned stays set until Present1 succeeds, no matter how many paint
+        attempts are abandoned in between. Errors deliberately keep the slot owned, because an
+        unmatched wait would deflate the semaphore and permanently stop painting, whereas an
+        unmatched present merely inflates it back towards the old blocking behaviour.
+
+        If the semaphore count is ever lost (e.g. a present that never retires), the gate fails
+        open after a bounded number of consecutive timeouts and paints anyway - the unmatched
+        present then restores the lost count when it retires.
+    */
+    bool isFrameSlotAvailable()
+    {
+        if (frameSlotOwned)
+            return true;
+
+        if (! swapChainEvent.has_value())
+            return true;
+
+        switch (WaitForSingleObject (swapChainEvent->getHandle(), 0))
+        {
+            case WAIT_OBJECT_0:
+                frameSlotOwned = true;
+                consecutiveTimeouts = 0;
+                return true;
+
+            case WAIT_TIMEOUT:
+                if (++consecutiveTimeouts <= maxConsecutiveTimeouts)
+                    return false;
+
+                // Fall back to a blocking present, without owning a slot, to repair a potentially
+                // lost semaphore count
+                consecutiveTimeouts = 0;
+                return true;
+
+            default:
+                // WAIT_FAILED etc: fail open to the old blocking behaviour
+                consecutiveTimeouts = 0;
+                return true;
+        }
+    }
+
+    void onPresentComplete()
+    {
+        frameSlotOwned = false;
+    }
+    // Minimal Audio modification end
 
     HRESULT resize (Rectangle<int> newSize)
     {
@@ -236,6 +305,14 @@ private:
     AssignableDirectX directX;
     ComSmartPtr<IDXGISwapChain1> chain;
     ComSmartPtr<ID2D1Bitmap1> buffer;
+
+    // Minimal Audio modification start (non-blocking frame-latency wait)
+    static constexpr int maxConsecutiveTimeouts = 8;
+
+    std::optional<WindowsScopedEvent> swapChainEvent;
+    bool frameSlotOwned = false;
+    int consecutiveTimeouts = 0;
+    // Minimal Audio modification end
 };
 
 //==============================================================================
@@ -364,6 +441,14 @@ private:
         bool ready = Pimpl::checkPaintReady();
         ready &= swap.canPaint();
         ready &= compositionTree.has_value();
+
+        // Minimal Audio modification start (non-blocking frame-latency wait)
+        // Only paint when a present slot is free, so that Present1 won't block the message
+        // thread. Returning false here makes startFrame() return nullptr, and the peer retries on
+        // the next vblank with the deferred repaint areas intact.
+        if (ready)
+            ready &= swap.isFrameSlotAvailable();
+        // Minimal Audio modification end
 
         return ready;
     }
@@ -496,6 +581,16 @@ public:
                                                    &params);
         jassertquiet (SUCCEEDED (hr));
 
+        // Minimal Audio modification start (non-blocking frame-latency wait)
+        // Release the present slot claimed in SwapChain::isFrameSlotAvailable(). Strictly S_OK, not
+        // SUCCEEDED(): a present that returns a success status like DXGI_STATUS_OCCLUDED may never
+        // retire, and releasing the slot for it would leak a semaphore count and stop painting for
+        // good. Keeping the slot owned on any non-S_OK result just skips the wait on the next
+        // attempt.
+        if (hr == S_OK)
+            swap.onPresentComplete();
+        // Minimal Audio modification end
+
         if (FAILED (hr))
             return;
 
@@ -539,6 +634,13 @@ public:
         if (FAILED (hr))
             return {};
 
+        // Minimal Audio modification start (non-blocking frame-latency wait)
+        // The two DXGI_PRESENT_DO_NOT_WAIT presents below bypass the frame slot accounting in
+        // SwapChain::isFrameSlotAvailable(). That's benign: an unmatched present can only inflate
+        // the latency semaphore when it retires, briefly letting a subsequent frame present
+        // without waiting. Don't try to re-drain the semaphore here - an unmatched wait could
+        // deflate it and stop painting permanently.
+        // Minimal Audio modification end
         swap.getChain()->Present (0, DXGI_PRESENT_DO_NOT_WAIT);
 
         // Copy the swap chain buffer to the bitmap snapshot
