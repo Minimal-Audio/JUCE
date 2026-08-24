@@ -224,6 +224,12 @@ void UndoManager::beginNewTransaction (const String& actionName)
 {
     newTransaction = true;
     newTransactionName = actionName;
+    ++currentTransactionID;
+}
+
+std::uint64_t UndoManager::getCurrentTransactionID() const
+{
+    return currentTransactionID;
 }
 
 void UndoManager::setCurrentTransactionName (const String& newName)
