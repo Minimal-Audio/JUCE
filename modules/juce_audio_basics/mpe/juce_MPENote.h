@@ -109,6 +109,12 @@ struct JUCE_API  MPENote
     */
     uint16 noteID = 0;
 
+    /** Minimal Audio patch: tells apart stacked instances of the same note (they share a
+        noteID) that sound at the same time. Assigned by MPEInstrument on note-on; 0 for
+        notes constructed by hand.
+    */
+    uint32 instanceID = 0;
+
     /** The MIDI channel which this note uses.
         This should never change during the lifetime of an MPENote object.
     */

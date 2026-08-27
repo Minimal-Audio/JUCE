@@ -365,18 +365,11 @@ void MPEInstrument::noteOn (int midiChannel,
     const ScopedLock sl (lock);
     updateNoteTotalPitchbend (newNote);
 
-    if (auto* alreadyPlayingNote = getNotePtr (midiChannel, midiNoteNumber))
-    {
-        // pathological case: second note-on received for same note -> retrigger it
-        alreadyPlayingNote->keyState = MPENote::off;
-        alreadyPlayingNote->noteOffVelocity = MPEValue::from7BitInt (64); // some reasonable number
-
-        // This is commented out so that we can legato mods correctly between voices that share the same note.
-        // listeners.call ([=] (Listener& l) { l.noteReleased (*alreadyPlayingNote); });
-
-        notes.remove (alreadyPlayingNote);
-    }
-
+    // Minimal Audio patch: a second note-on for a note that is already playing stacks a new
+    // note on top of it instead of retriggering it, so overlapping instances of the same
+    // note (e.g. an arpeggiator gate longer than its step) each keep their own lifetime.
+    // Note-offs then release the oldest instance first (see noteOff).
+    newNote.instanceID = ++lastNoteInstanceID;
     notes.add (newNote);
     listeners.call ([&] (Listener& l) { l.noteAdded (newNote); });
 }
@@ -391,6 +384,8 @@ void MPEInstrument::noteOff (int midiChannel,
     if (notes.isEmpty() || ! isUsingChannel (midiChannel))
         return;
 
+    // getNotePtr returns the oldest note for this channel / number, so stacked instances of
+    // the same note are released in the order they were started.
     if (auto* note = getNotePtr (midiChannel, midiNoteNumber))
     {
         note->keyState = (note->keyState == MPENote::keyDownAndSustained) ? MPENote::sustained : MPENote::off;
@@ -994,13 +989,21 @@ public:
                 expectNote (test.getNote (3, 2), 100, 0, 8192, 64, MPENote::keyDown);
             }
             {
-                // pathological case: second note-on for same note should retrigger it
+                // Minimal Audio patch: a second note-on for the same note stacks a new
+                // instance, and note-offs release the oldest instance first
                 UnitTestInstrument test;
                 test.setZoneLayout (testLayout);
                 test.noteOn (3, 0, MPEValue::from7BitInt (100));
                 test.noteOn (3, 0, MPEValue::from7BitInt (60));
+                expectEquals (test.getNumPlayingNotes(), 2);
+                expectNote (test.getNote (3, 0), 100, 0, 8192, 64, MPENote::keyDown);
+
+                test.noteOff (3, 0, MPEValue::from7BitInt (33));
                 expectEquals (test.getNumPlayingNotes(), 1);
                 expectNote (test.getNote (3, 0), 60, 0, 8192, 64, MPENote::keyDown);
+
+                test.noteOff (3, 0, MPEValue::from7BitInt (33));
+                expectEquals (test.getNumPlayingNotes(), 0);
             }
         }
 
