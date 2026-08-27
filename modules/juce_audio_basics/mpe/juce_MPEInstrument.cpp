@@ -366,9 +366,13 @@ void MPEInstrument::noteOn (int midiChannel,
     updateNoteTotalPitchbend (newNote);
 
     // Minimal Audio patch: a second note-on for a note that is already playing stacks a new
-    // note on top of it instead of retriggering it, so overlapping instances of the same
-    // note (e.g. an arpeggiator gate longer than its step) each keep their own lifetime.
-    // Note-offs then release the oldest instance first (see noteOff).
+    // note on top of it. Stock JUCE retriggers here (releases the old note, starts the new one).
+    // Our previous patch kept the old voice sounding but dropped its note from `notes`, so the
+    // instrument only ever knew about the newest instance: a single note-off then released
+    // every voice playing that note at once, and the older instances could never be released
+    // individually. Now every instance stays tracked and gets its own instanceID; note-offs
+    // release them oldest first (see noteOff), and MPESynthesiser::noteReleased stops only
+    // the voice that belongs to the released instance.
     newNote.instanceID = ++lastNoteInstanceID;
     notes.add (newNote);
     listeners.call ([&] (Listener& l) { l.noteAdded (newNote); });
@@ -384,8 +388,9 @@ void MPEInstrument::noteOff (int midiChannel,
     if (notes.isEmpty() || ! isUsingChannel (midiChannel))
         return;
 
-    // getNotePtr returns the oldest note for this channel / number, so stacked instances of
-    // the same note are released in the order they were started.
+    // Minimal Audio patch: getNotePtr returns the oldest note for this channel / number, so
+    // stacked instances of the same note (see noteOn) are released in the order they were
+    // started, one per note-off.
     if (auto* note = getNotePtr (midiChannel, midiNoteNumber))
     {
         note->keyState = (note->keyState == MPENote::keyDownAndSustained) ? MPENote::sustained : MPENote::off;
@@ -990,7 +995,8 @@ public:
             }
             {
                 // Minimal Audio patch: a second note-on for the same note stacks a new
-                // instance, and note-offs release the oldest instance first
+                // instance instead of retriggering it, and each note-off releases the
+                // oldest instance still playing
                 UnitTestInstrument test;
                 test.setZoneLayout (testLayout);
                 test.noteOn (3, 0, MPEValue::from7BitInt (100));

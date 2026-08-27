@@ -76,8 +76,9 @@ void MPESynthesiser::noteAdded (MPENote newNote)
 }
 
 // Minimal Audio patch: stacked instances of a note share a noteID and all receive the same
-// expression updates, but each voice keeps the instanceID of the note it was started with so
-// a later release still finds the right voice.
+// expression / key-state updates (matched on noteID, as in stock JUCE). The incoming note
+// carries the instanceID of whichever instance the instrument looked up, so keep the voice's
+// own instanceID or a later release could stop the wrong voice.
 void MPESynthesiser::updatePlayingNote (MPESynthesiserVoice& voice, MPENote changedNote)
 {
     const auto instanceID = voice.currentlyPlayingNote.instanceID;
@@ -146,9 +147,10 @@ void MPESynthesiser::noteReleased (MPENote finishedNote)
     const ScopedLock sl (voicesLock);
 
     // Minimal Audio patch: instances of the same note stack (see MPEInstrument::noteOn) and
-    // share a noteID, so a release stops the voice playing that exact instance rather than
-    // every voice playing the note. Notes built by hand carry no instanceID and fall back
-    // to the noteID match.
+    // share a noteID. Stock JUCE (and our previous patch) stopped every voice playing that
+    // noteID here, so releasing one instance silenced all of them; now only the voice playing
+    // the released instance stops. Notes built by hand carry no instanceID and keep the
+    // stock noteID match.
     for (auto i = voices.size(); --i >= 0;)
     {
         auto* voice = voices.getUnchecked (i);
