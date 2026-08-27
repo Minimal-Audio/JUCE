@@ -374,6 +374,7 @@ protected:
 private:
     //==============================================================================
     Array<MPENote> notes;
+    uint32 lastNoteInstanceID = 0;
     MPEZoneLayout zoneLayout;
     ListenerList<Listener> listeners;
 

@@ -75,6 +75,17 @@ void MPESynthesiser::noteAdded (MPENote newNote)
         startVoice (voice, newNote);
 }
 
+// Minimal Audio patch: stacked instances of a note share a noteID and all receive the same
+// expression / key-state updates (matched on noteID, as in stock JUCE). The incoming note
+// carries the instanceID of whichever instance the instrument looked up, so keep the voice's
+// own instanceID or a later release could stop the wrong voice.
+void MPESynthesiser::updatePlayingNote (MPESynthesiserVoice& voice, MPENote changedNote)
+{
+    const auto instanceID = voice.currentlyPlayingNote.instanceID;
+    voice.currentlyPlayingNote = changedNote;
+    voice.currentlyPlayingNote.instanceID = instanceID;
+}
+
 void MPESynthesiser::notePressureChanged (MPENote changedNote)
 {
     const ScopedLock sl (voicesLock);
@@ -83,7 +94,7 @@ void MPESynthesiser::notePressureChanged (MPENote changedNote)
     {
         if (voice->isCurrentlyPlayingNote (changedNote))
         {
-            voice->currentlyPlayingNote = changedNote;
+            updatePlayingNote (*voice, changedNote);
             voice->notePressureChanged();
         }
     }
@@ -97,7 +108,7 @@ void MPESynthesiser::notePitchbendChanged (MPENote changedNote)
     {
         if (voice->isCurrentlyPlayingNote (changedNote))
         {
-            voice->currentlyPlayingNote = changedNote;
+            updatePlayingNote (*voice, changedNote);
             voice->notePitchbendChanged();
         }
     }
@@ -111,7 +122,7 @@ void MPESynthesiser::noteTimbreChanged (MPENote changedNote)
     {
         if (voice->isCurrentlyPlayingNote (changedNote))
         {
-            voice->currentlyPlayingNote = changedNote;
+            updatePlayingNote (*voice, changedNote);
             voice->noteTimbreChanged();
         }
     }
@@ -125,7 +136,7 @@ void MPESynthesiser::noteKeyStateChanged (MPENote changedNote)
     {
         if (voice->isCurrentlyPlayingNote (changedNote))
         {
-            voice->currentlyPlayingNote = changedNote;
+            updatePlayingNote (*voice, changedNote);
             voice->noteKeyStateChanged();
         }
     }
@@ -135,12 +146,22 @@ void MPESynthesiser::noteReleased (MPENote finishedNote)
 {
     const ScopedLock sl (voicesLock);
 
+    // Minimal Audio patch: instances of the same note stack (see MPEInstrument::noteOn) and
+    // share a noteID. Stock JUCE (and our previous patch) stopped every voice playing that
+    // noteID here, so releasing one instance silenced all of them; now only the voice playing
+    // the released instance stops. Notes built by hand carry no instanceID and keep the
+    // stock noteID match.
     for (auto i = voices.size(); --i >= 0;)
     {
         auto* voice = voices.getUnchecked (i);
 
         if (voice->isCurrentlyPlayingNote (finishedNote))
-            stopVoice (voice, finishedNote, true);
+        {
+            const auto playingInstanceID = voice->getCurrentlyPlayingNote().instanceID;
+
+            if (finishedNote.instanceID == 0 || playingInstanceID == finishedNote.instanceID)
+                stopVoice (voice, finishedNote, true);
+        }
     }
 }
 
