@@ -68,6 +68,8 @@ struct UndoManager::ActionSet
         return total;
     }
 
+    TransactionView getView() const;
+
     OwnedArray<UndoableAction> actions;
     String name;
     Time time { Time::getCurrentTime() };
@@ -356,6 +358,32 @@ bool UndoManager::undoCurrentTransactionOnly()
     }
 
     return false;
+}
+
+UndoManager::TransactionView UndoManager::ActionSet::getView() const
+{
+    TransactionView view { name, time, {} };
+
+    for (auto* a : actions)
+        view.actions.add (a);
+
+    return view;
+}
+
+Array<UndoManager::TransactionView> UndoManager::getTransactions() const
+{
+    Array<TransactionView> views;
+    views.ensureStorageAllocated (transactions.size());
+
+    for (auto* t : transactions)
+        views.add (t->getView());
+
+    return views;
+}
+
+int UndoManager::getNumUndoableTransactions() const
+{
+    return nextIndex;
 }
 
 void UndoManager::getActionsInCurrentTransaction (Array<const UndoableAction*>& actionsFound) const

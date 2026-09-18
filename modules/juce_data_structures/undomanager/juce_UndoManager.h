@@ -254,6 +254,32 @@ public:
     /** Returns true if the caller code is in the middle of an undo or redo action. */
     bool isPerformingUndoRedo() const;
 
+    //==============================================================================
+    /** A read-only view of one stored transaction, as returned by getTransactions().
+
+        The action pointers are owned by the UndoManager and stay valid only until the
+        history next changes.
+    */
+    struct TransactionView
+    {
+        String name;
+        Time time;
+        Array<const UndoableAction*> actions;
+    };
+
+    /** Returns every stored transaction, oldest first.
+
+        The first getNumUndoableTransactions() entries are the ones undo() steps back
+        through, newest last; the rest are the ones redo() replays, in replay order.
+        @see getNumUndoableTransactions
+    */
+    Array<TransactionView> getTransactions() const;
+
+    /** Returns how many of the transactions returned by getTransactions() can be undone.
+        @see getTransactions
+    */
+    int getNumUndoableTransactions() const;
+
 private:
     //==============================================================================
     struct ActionSet;
