@@ -254,6 +254,7 @@ public:
     /** Returns true if the caller code is in the middle of an undo or redo action. */
     bool isPerformingUndoRedo() const;
 
+    // Minimal Audio modification start
     //==============================================================================
     /** A read-only view of one stored transaction, as returned by getTransactions().
 
@@ -279,6 +280,7 @@ public:
         @see getTransactions
     */
     int getNumUndoableTransactions() const;
+    // Minimal Audio modification end
 
 private:
     //==============================================================================

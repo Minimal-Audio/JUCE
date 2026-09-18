@@ -68,7 +68,9 @@ struct UndoManager::ActionSet
         return total;
     }
 
+    // Minimal Audio modification start
     TransactionView getView() const;
+    // Minimal Audio modification end
 
     OwnedArray<UndoableAction> actions;
     String name;
@@ -360,6 +362,7 @@ bool UndoManager::undoCurrentTransactionOnly()
     return false;
 }
 
+// Minimal Audio modification start
 UndoManager::TransactionView UndoManager::ActionSet::getView() const
 {
     TransactionView view { name, time, {} };
@@ -385,6 +388,7 @@ int UndoManager::getNumUndoableTransactions() const
 {
     return nextIndex;
 }
+// Minimal Audio modification end
 
 void UndoManager::getActionsInCurrentTransaction (Array<const UndoableAction*>& actionsFound) const
 {
