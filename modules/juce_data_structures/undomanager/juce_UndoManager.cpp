@@ -93,6 +93,9 @@ void UndoManager::clearUndoHistory()
     transactions.clear();
     totalUnitsStored = 0;
     nextIndex = 0;
+    // Minimal Audio modification start
+    droppedTransactions = false;
+    // Minimal Audio modification end
     sendChangeMessage();
 }
 
@@ -212,6 +215,9 @@ void UndoManager::dropOldTransactionsIfTooLarge()
         totalUnitsStored -= transactions.getFirst()->getTotalSize();
         transactions.remove (0);
         --nextIndex;
+        // Minimal Audio modification start
+        droppedTransactions = true;
+        // Minimal Audio modification end
 
         // if this fails, then some actions may not be returning
         // consistent results from their getSizeInUnits() method
@@ -387,6 +393,11 @@ Array<UndoManager::TransactionView> UndoManager::getTransactions() const
 int UndoManager::getNumUndoableTransactions() const
 {
     return nextIndex;
+}
+
+bool UndoManager::hasDroppedTransactions() const
+{
+    return droppedTransactions;
 }
 // Minimal Audio modification end
 

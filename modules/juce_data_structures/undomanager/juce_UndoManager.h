@@ -280,6 +280,13 @@ public:
         @see getTransactions
     */
     int getNumUndoableTransactions() const;
+
+    /** Returns true if old transactions have been dropped to stay within the limits set by
+        setMaxNumberOfStoredUnits() since the history was last cleared, i.e. if the oldest
+        stored transaction is no longer the first one performed.
+        @see clearUndoHistory, setMaxNumberOfStoredUnits
+    */
+    bool hasDroppedTransactions() const;
     // Minimal Audio modification end
 
 private:
@@ -289,6 +296,9 @@ private:
     String newTransactionName;
     int totalUnitsStored = 0, maxNumUnitsToKeep = 0, minimumTransactionsToKeep = 0, nextIndex = 0;
     bool newTransaction = true, isInsideUndoRedoCall = false;
+    // Minimal Audio modification start
+    bool droppedTransactions = false;
+    // Minimal Audio modification end
     ActionSet* getCurrentSet() const;
     ActionSet* getNextSet() const;
     void moveFutureTransactionsToStash();
