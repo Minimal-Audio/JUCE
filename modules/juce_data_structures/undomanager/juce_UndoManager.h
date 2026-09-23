@@ -254,6 +254,45 @@ public:
     /** Returns true if the caller code is in the middle of an undo or redo action. */
     bool isPerformingUndoRedo() const;
 
+    // Minimal Audio modification start #43
+    //==============================================================================
+    /** A read-only view of one stored transaction, as returned by getTransactions().
+
+        The action pointers are owned by the UndoManager and stay valid only until the
+        history next changes.
+    */
+    struct TransactionView
+    {
+        String name;
+        Time time;
+        Array<const UndoableAction*> actions;
+    };
+
+    /** Returns every stored transaction, oldest first.
+
+        The first getNumUndoableTransactions() entries are the ones undo() steps back
+        through, newest last; the rest are the ones redo() replays, in replay order.
+        @see getNumUndoableTransactions
+    */
+    Array<TransactionView> getTransactions() const;
+
+    /** Returns how many of the transactions returned by getTransactions() can be undone.
+        @see getTransactions
+    */
+    int getNumUndoableTransactions() const;
+
+    /** Returns the newest transaction dropped to stay within the limits set by
+        setMaxNumberOfStoredUnits(), or nothing if none has been dropped since the history
+        was last cleared.
+
+        The state before the oldest stored transaction is the one this transaction left, so a
+        history view can show it as that state. It is kept outside the stored units, and its
+        action pointers stay valid only until the history next changes.
+        @see getTransactions, clearUndoHistory, setMaxNumberOfStoredUnits
+    */
+    std::optional<TransactionView> getLastDroppedTransaction() const;
+    // Minimal Audio modification end #43
+
 private:
     //==============================================================================
     struct ActionSet;
@@ -261,6 +300,9 @@ private:
     String newTransactionName;
     int totalUnitsStored = 0, maxNumUnitsToKeep = 0, minimumTransactionsToKeep = 0, nextIndex = 0;
     bool newTransaction = true, isInsideUndoRedoCall = false;
+    // Minimal Audio modification start #43
+    std::unique_ptr<ActionSet> lastDroppedTransaction;
+    // Minimal Audio modification end #43
     ActionSet* getCurrentSet() const;
     ActionSet* getNextSet() const;
     void moveFutureTransactionsToStash();

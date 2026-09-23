@@ -68,6 +68,10 @@ struct UndoManager::ActionSet
         return total;
     }
 
+    // Minimal Audio modification start #43
+    TransactionView getView() const;
+    // Minimal Audio modification end #43
+
     OwnedArray<UndoableAction> actions;
     String name;
     Time time { Time::getCurrentTime() };
@@ -89,6 +93,9 @@ void UndoManager::clearUndoHistory()
     transactions.clear();
     totalUnitsStored = 0;
     nextIndex = 0;
+    // Minimal Audio modification start #43
+    lastDroppedTransaction.reset();
+    // Minimal Audio modification end #43
     sendChangeMessage();
 }
 
@@ -206,7 +213,9 @@ void UndoManager::dropOldTransactionsIfTooLarge()
             && transactions.size() > minimumTransactionsToKeep)
     {
         totalUnitsStored -= transactions.getFirst()->getTotalSize();
-        transactions.remove (0);
+        // Minimal Audio modification start #43
+        lastDroppedTransaction.reset (transactions.removeAndReturn (0));
+        // Minimal Audio modification end #43
         --nextIndex;
 
         // if this fails, then some actions may not be returning
@@ -357,6 +366,42 @@ bool UndoManager::undoCurrentTransactionOnly()
 
     return false;
 }
+
+// Minimal Audio modification start #43
+UndoManager::TransactionView UndoManager::ActionSet::getView() const
+{
+    TransactionView view { name, time, {} };
+
+    for (auto* a : actions)
+        view.actions.add (a);
+
+    return view;
+}
+
+Array<UndoManager::TransactionView> UndoManager::getTransactions() const
+{
+    Array<TransactionView> views;
+    views.ensureStorageAllocated (transactions.size());
+
+    for (auto* t : transactions)
+        views.add (t->getView());
+
+    return views;
+}
+
+int UndoManager::getNumUndoableTransactions() const
+{
+    return nextIndex;
+}
+
+std::optional<UndoManager::TransactionView> UndoManager::getLastDroppedTransaction() const
+{
+    if (lastDroppedTransaction == nullptr)
+        return std::nullopt;
+
+    return lastDroppedTransaction->getView();
+}
+// Minimal Audio modification end #43
 
 void UndoManager::getActionsInCurrentTransaction (Array<const UndoableAction*>& actionsFound) const
 {
