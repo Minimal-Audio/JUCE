@@ -254,7 +254,7 @@ public:
     /** Returns true if the caller code is in the middle of an undo or redo action. */
     bool isPerformingUndoRedo() const;
 
-    // Minimal Audio modification start
+    // Minimal Audio modification start #43
     //==============================================================================
     /** A read-only view of one stored transaction, as returned by getTransactions().
 
@@ -291,7 +291,7 @@ public:
         @see getTransactions, clearUndoHistory, setMaxNumberOfStoredUnits
     */
     std::optional<TransactionView> getLastDroppedTransaction() const;
-    // Minimal Audio modification end
+    // Minimal Audio modification end #43
 
 private:
     //==============================================================================
@@ -300,9 +300,9 @@ private:
     String newTransactionName;
     int totalUnitsStored = 0, maxNumUnitsToKeep = 0, minimumTransactionsToKeep = 0, nextIndex = 0;
     bool newTransaction = true, isInsideUndoRedoCall = false;
-    // Minimal Audio modification start
+    // Minimal Audio modification start #43
     std::unique_ptr<ActionSet> lastDroppedTransaction;
-    // Minimal Audio modification end
+    // Minimal Audio modification end #43
     ActionSet* getCurrentSet() const;
     ActionSet* getNextSet() const;
     void moveFutureTransactionsToStash();

@@ -68,9 +68,9 @@ struct UndoManager::ActionSet
         return total;
     }
 
-    // Minimal Audio modification start
+    // Minimal Audio modification start #43
     TransactionView getView() const;
-    // Minimal Audio modification end
+    // Minimal Audio modification end #43
 
     OwnedArray<UndoableAction> actions;
     String name;
@@ -93,9 +93,9 @@ void UndoManager::clearUndoHistory()
     transactions.clear();
     totalUnitsStored = 0;
     nextIndex = 0;
-    // Minimal Audio modification start
+    // Minimal Audio modification start #43
     lastDroppedTransaction.reset();
-    // Minimal Audio modification end
+    // Minimal Audio modification end #43
     sendChangeMessage();
 }
 
@@ -213,9 +213,9 @@ void UndoManager::dropOldTransactionsIfTooLarge()
             && transactions.size() > minimumTransactionsToKeep)
     {
         totalUnitsStored -= transactions.getFirst()->getTotalSize();
-        // Minimal Audio modification start
+        // Minimal Audio modification start #43
         lastDroppedTransaction.reset (transactions.removeAndReturn (0));
-        // Minimal Audio modification end
+        // Minimal Audio modification end #43
         --nextIndex;
 
         // if this fails, then some actions may not be returning
@@ -367,7 +367,7 @@ bool UndoManager::undoCurrentTransactionOnly()
     return false;
 }
 
-// Minimal Audio modification start
+// Minimal Audio modification start #43
 UndoManager::TransactionView UndoManager::ActionSet::getView() const
 {
     TransactionView view { name, time, {} };
@@ -401,7 +401,7 @@ std::optional<UndoManager::TransactionView> UndoManager::getLastDroppedTransacti
 
     return lastDroppedTransaction->getView();
 }
-// Minimal Audio modification end
+// Minimal Audio modification end #43
 
 void UndoManager::getActionsInCurrentTransaction (Array<const UndoableAction*>& actionsFound) const
 {
