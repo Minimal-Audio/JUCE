@@ -542,7 +542,8 @@ private:
     bool locked;
 
     //==============================================================================
-    bool attemptLock (Thread*, ThreadPoolJob*);
+    template <typename ThreadOrThreadPoolJob>
+    bool attemptLock (ThreadOrThreadPoolJob*);
     void exitSignalSent() override;
 
     JUCE_DECLARE_NON_COPYABLE (MessageManagerLock)
