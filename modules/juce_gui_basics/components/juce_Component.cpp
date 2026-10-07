@@ -1919,9 +1919,9 @@ void Component::internalRepaintUnchecked (Rectangle<int> area, bool isEntireComp
             if (auto* peer = getPeer())
             {
                 // Tweak the scaling so that the component's integer size exactly aligns with the peer's scaled size
-                auto peerBounds = peer->getBounds();
-                auto scaled = area * Point<float> ((float) peerBounds.getWidth()  / (float) getWidth(),
-                                                   (float) peerBounds.getHeight() / (float) getHeight());
+                const auto peerSize = peer->getSize();
+                auto scaled = area * Point<float> ((float) peerSize.x / (float) getWidth(),
+                                                   (float) peerSize.y / (float) getHeight());
 
                 peer->repaint (isTransformed() ? scaled.transformedBy (componentData->affineTransform) : scaled);
             }

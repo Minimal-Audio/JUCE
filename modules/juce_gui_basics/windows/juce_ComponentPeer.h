@@ -215,6 +215,16 @@ public:
     */
     virtual Rectangle<int> getBounds() const = 0;
 
+    /** The size getBounds() reports, without its position. A repaint asks this
+        for every component, so a peer whose bounds are costly to work out can
+        answer from a cache that its own resizes refresh.
+    */
+    virtual Point<int> getSize() const
+    {
+        const auto bounds = getBounds();
+        return { bounds.getWidth(), bounds.getHeight() };
+    }
+
     /** Converts a position relative to the top-left of this component to screen coordinates. */
     virtual Point<float> localToGlobal (Point<float> relativePosition) = 0;
 

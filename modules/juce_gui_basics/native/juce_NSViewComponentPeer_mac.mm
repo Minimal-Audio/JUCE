@@ -404,6 +404,8 @@ public:
                      display: false];
         }
 
+        cachedSize.reset();
+
         if (! CGSizeEqualToSize (oldViewSize, r.size))
             [view setNeedsDisplay: true];
     }
@@ -427,6 +429,20 @@ public:
     Rectangle<int> getBounds() const override
     {
         return getBounds (! isSharedWindow);
+    }
+
+    Point<int> getSize() const override
+    {
+        // Every repaint asks; working the bounds out converts the frame to the
+        // screen through AppKit each time. The size only moves with the frame,
+        // which redirectMovedOrResized hears, so it's kept until then.
+        if (! cachedSize.has_value())
+        {
+            const auto bounds = getBounds();
+            cachedSize = Point<int> { bounds.getWidth(), bounds.getHeight() };
+        }
+
+        return *cachedSize;
     }
 
     Point<float> localToGlobal (Point<float> relativePosition) override
@@ -1231,12 +1247,15 @@ public:
 
     void redirectMovedOrResized()
     {
+        cachedSize.reset();
         handleMovedOrResized();
         setNeedsDisplayRectangles();
     }
 
     void viewMovedToWindow()
     {
+        cachedSize.reset();
+
         if (isSharedWindow)
         {
             auto newWindow = [view window];
@@ -1738,6 +1757,9 @@ public:
 
     NSWindow* window = nil;
     NSView* view = nil;
+
+    // getSize, until the frame next changes.
+    mutable std::optional<Point<int>> cachedSize;
     WeakReference<Component> safeComponent;
     const bool isSharedWindow = false;
    #if USE_COREGRAPHICS_RENDERING
