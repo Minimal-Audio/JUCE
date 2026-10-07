@@ -109,6 +109,14 @@ struct JUCE_API  MPENote
     */
     uint16 noteID = 0;
 
+    /** Minimal Audio patch: identifies one particular note-on. Stacked instances of the same
+        note (see MPEInstrument::noteOn) share a noteID, so noteID alone can't say which of
+        them a note-off belongs to; this can. Assigned by MPEInstrument on note-on, 0 for
+        notes constructed by hand. Unlike noteID it takes no part in equality or expression
+        matching.
+    */
+    uint32 instanceID = 0;
+
     /** The MIDI channel which this note uses.
         This should never change during the lifetime of an MPENote object.
     */

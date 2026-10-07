@@ -314,6 +314,9 @@ protected:
 
 private:
     //==============================================================================
+    void updatePlayingNote (MPESynthesiserVoice& voice, MPENote changedNote);
+
+    //==============================================================================
     std::atomic<bool> shouldStealVoices { false };
     uint32 lastNoteOnCounter = 0;
     mutable CriticalSection stealLock;
