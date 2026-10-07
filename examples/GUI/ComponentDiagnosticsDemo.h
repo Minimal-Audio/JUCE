@@ -1279,10 +1279,17 @@ class ComponentDiagnosticsDemo : public Component
 public:
     ComponentDiagnosticsDemo()
     {
+        ComponentPaintDiagnostics::setMeasuringEnabled (true);
+
         addAndMakeVisible (profilerA);
         addAndMakeVisible (profilerB);
 
         setSize (800, 600);
+    }
+
+    ~ComponentDiagnosticsDemo() override
+    {
+        ComponentPaintDiagnostics::setMeasuringEnabled (false);
     }
 
     void resized() final

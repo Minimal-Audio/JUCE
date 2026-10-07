@@ -76,6 +76,24 @@ struct JUCE_API ComponentPaintDiagnostics
         @see Component::setBufferedToImage, Component::setCachedComponentImage
     */
     bool readFromCache{};
+
+    /** False when the durations above were not measured and are left at zero:
+        measuring is off, or no ComponentListener was attached to hear this
+        paint. A paint nobody times never reads the clock.
+
+        @see setMeasuringEnabled
+    */
+    bool measured = true;
+
+    /** Whether paints are timed at all. Off by default: the durations cost a
+        clock read on every component paint, which shows in a busy UI. Turn it
+        on before reading the durations from ComponentListener::componentPainted.
+        Message thread only.
+    */
+    static void setMeasuringEnabled (bool shouldMeasure) noexcept;
+
+    /** @see setMeasuringEnabled */
+    static bool isMeasuringEnabled() noexcept;
 };
 
 //==============================================================================

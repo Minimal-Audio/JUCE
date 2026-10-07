@@ -45,4 +45,9 @@ void ComponentListener::componentBeingDeleted (Component&) {}
 void ComponentListener::componentEnablementChanged (Component&) {}
 void ComponentListener::componentPainted (Component&, const ComponentPaintDiagnostics&) {}
 
+static bool paintMeasuringEnabled = false;
+
+void ComponentPaintDiagnostics::setMeasuringEnabled (bool shouldMeasure) noexcept   { paintMeasuringEnabled = shouldMeasure; }
+bool ComponentPaintDiagnostics::isMeasuringEnabled() noexcept                       { return paintMeasuringEnabled; }
+
 } // namespace juce

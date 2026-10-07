@@ -195,6 +195,35 @@ private:
     JUCE_DECLARE_NON_COPYABLE (MouseListenerList)
 };
 
+namespace detail
+{
+
+/*  Times a stretch of a paint into a TimedDiagnostic, but only for a paint
+    someone listens to: an unwatched paint reads no clock. */
+class ScopedPaintTimer
+{
+public:
+    ScopedPaintTimer (TimedDiagnostic& diagnostic, bool measured) noexcept
+        : target (measured ? &diagnostic : nullptr),
+          startTicks (measured ? Time::getHighResolutionTicks() : 0)
+    {
+    }
+
+    ~ScopedPaintTimer()
+    {
+        if (target != nullptr)
+            target->set (std::chrono::duration<double> (Time::highResolutionTicksToSeconds (Time::getHighResolutionTicks() - startTicks)));
+    }
+
+private:
+    TimedDiagnostic* target;
+    int64 startTicks;
+
+    JUCE_DECLARE_NON_COPYABLE (ScopedPaintTimer)
+};
+
+} // namespace detail
+
 class Component::EffectState
 {
 public:
@@ -251,7 +280,7 @@ public:
 
         g.addTransform (AffineTransform::scale (1.0f / scale));
 
-        const auto diagnosticTimer = diagnostics.applyEffectDuration.createTimer();
+        const detail::ScopedPaintTimer diagnosticTimer (diagnostics.applyEffectDuration, diagnostics.measured);
         effect->applyEffect (effectImage, g, scale, ignoreAlphaLevel ? 1.0f : c.getAlpha());
     }
 
@@ -1962,7 +1991,7 @@ void Component::paintComponentAndChildren (Graphics& g, OpaqueLayer& opaqueLayer
         if (! isPaintingUnclipped())
             g.reduceClipRegion (paintBounds);
 
-        const auto diagnosticTimer = diagnostics.paintDuration.createTimer();
+        const detail::ScopedPaintTimer diagnosticTimer (diagnostics.paintDuration, diagnostics.measured);
         paint (g);
     }
 
@@ -1972,13 +2001,14 @@ void Component::paintComponentAndChildren (Graphics& g, OpaqueLayer& opaqueLayer
             continue;
 
         ComponentPaintDiagnostics childDiagnostics;
+        childDiagnostics.measured = ComponentPaintDiagnostics::isMeasuringEnabled() && ! child->componentListeners.isEmpty();
 
         const ScopeGuard scopedListenerCallback { [&]
         {
             child->componentListeners.call ([&] (auto& l) { l.componentPainted (*child, childDiagnostics); });
         } };
 
-        const auto diagnosticTimer = childDiagnostics.totalPaintDuration.createTimer();
+        const detail::ScopedPaintTimer diagnosticTimer (childDiagnostics.totalPaintDuration, childDiagnostics.measured);
 
         if (child->isTransformed() || child->componentTransparency != 0)
         {
@@ -2011,7 +2041,7 @@ void Component::paintComponentAndChildren (Graphics& g, OpaqueLayer& opaqueLayer
     if (! isPaintingUnclipped())
         g.reduceClipRegion (getLocalBounds());
 
-    const auto diagnosticTimer = diagnostics.paintOverChildrenDuration.createTimer();
+    const detail::ScopedPaintTimer diagnosticTimer (diagnostics.paintOverChildrenDuration, diagnostics.measured);
     paintOverChildren (g);
 }
 
@@ -2043,13 +2073,14 @@ void Component::paintEntireComponent (Graphics& g, bool ignoreAlphaLevel)
     }
 
     ComponentPaintDiagnostics diagnostics;
+    diagnostics.measured = ComponentPaintDiagnostics::isMeasuringEnabled() && ! componentListeners.isEmpty();
 
     const ScopeGuard scopedListenerCallback { [&]
     {
         componentListeners.call ([&] (auto& l) { l.componentPainted (*this, diagnostics); });
     } };
 
-    const auto diagnosticTimer = diagnostics.totalPaintDuration.createTimer();
+    const detail::ScopedPaintTimer diagnosticTimer (diagnostics.totalPaintDuration, diagnostics.measured);
     paintEntireComponent (g, ignoreAlphaLevel, opaqueLayer, diagnostics);
 }
 
