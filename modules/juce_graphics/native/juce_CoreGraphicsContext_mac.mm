@@ -580,12 +580,25 @@ void CoreGraphicsContext::setFill (const FillType& fillType)
 
     if (fillType.isColour())
     {
-        const CGFloat components[] { fillType.colour.getFloatRed(),
-                                     fillType.colour.getFloatGreen(),
-                                     fillType.colour.getFloatBlue(),
-                                     fillType.colour.getFloatAlpha() };
+        // MKU: a frame sets a few colours hundreds of times, and every cached picture's blit sets one, so each
+        // used to allocate a CGColor and free it (~380 ns). Kept per thread by ARGB in the context's sRGB space.
+        thread_local std::unordered_map<uint32, detail::ColorPtr> colours;
 
-        const detail::ColorPtr color { CGColorCreate (rgbColourSpace.get(), components) };
+        if (colours.size() > 512)
+            colours.clear();
+
+        auto& color = colours[fillType.colour.getARGB()];
+
+        if (color == nullptr)
+        {
+            const CGFloat components[] { fillType.colour.getFloatRed(),
+                                         fillType.colour.getFloatGreen(),
+                                         fillType.colour.getFloatBlue(),
+                                         fillType.colour.getFloatAlpha() };
+
+            color = detail::ColorPtr { CGColorCreate (rgbColourSpace.get(), components) };
+        }
+
         CGContextSetFillColorWithColor (context.get(), color.get());
         CGContextSetStrokeColorWithColor (context.get(), color.get());
         CGContextSetAlpha (context.get(), 1.0f);
