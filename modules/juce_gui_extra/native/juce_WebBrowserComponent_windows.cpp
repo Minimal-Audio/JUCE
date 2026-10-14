@@ -1076,12 +1076,14 @@ private:
             webView2ConstructionHelper.viewsWaitingForCreation.erase (this);
             webView2ConstructionHelper.webView2BeingCreated = this;
 
-            const auto hostHwnd = (HWND) peer->getNativeHandle();
-            auto completionHandler = Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler> (
-                    [weakThis = WeakReference<WebView2> { this }] (HRESULT, ICoreWebView2Controller* controller) -> HRESULT
+            webViewHandle.environment->CreateCoreWebView2Controller ((HWND) peer->getNativeHandle(),
+                Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler> (
+                    [weakThis = WeakReference<WebView2> { this },
+                     contextBeforeWebViewCreation = GetThreadDpiAwarenessContext()] (HRESULT, ICoreWebView2Controller* controller) -> HRESULT
                     {
                         if (weakThis != nullptr)
                         {
+                            SetThreadDpiAwarenessContext (contextBeforeWebViewCreation);
                             weakThis->triggerAsyncUpdate();
                             webView2ConstructionHelper.webView2BeingCreated = nullptr;
 
@@ -1174,9 +1176,7 @@ private:
                         }
 
                         return S_OK;
-                    });
-
-            webViewHandle.environment->CreateCoreWebView2Controller (hostHwnd, completionHandler.Get());
+                    }).Get());
         }
     }
 
