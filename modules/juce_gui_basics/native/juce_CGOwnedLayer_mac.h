@@ -118,6 +118,18 @@ public:
         [CATransaction commit];
     }
 
+    /*  Drops every surface and clears the layer's contents, so drawRect: draws the layer again.
+        The next update draws the whole view.
+    */
+    void release (CALayer* layer)
+    {
+        surfaces.clear();
+        pending.clear();
+        newest = -1;
+        surfaceWidth = surfaceHeight = 0;
+        layer.contents = nil;
+    }
+
 private:
     struct SurfaceDeleter { void operator() (IOSurfaceRef s) const { CFRelease (s); } };
 

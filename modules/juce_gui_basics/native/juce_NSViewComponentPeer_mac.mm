@@ -1088,10 +1088,63 @@ public:
             return false;
         #endif
 
-        return usingCoreGraphics && view.layer != nil;
+        return usingCoreGraphics && view.layer != nil && ! ownedLayerHandedBack;
        #else
         return false;
        #endif
+    }
+
+    // A frame dirtier than this share of the view goes back to drawRect:, which CoreAnimation draws on the GPU off
+    // the message thread. The owned surface comes back after a run of small frames. JUCE_OWN_LAYER_MAX_AREA overrides
+    // the share, for measuring.
+    static float ownedLayerMaxArea()
+    {
+        static const float share = []
+        {
+            if (auto* value = getenv ("JUCE_OWN_LAYER_MAX_AREA"))
+                return (float) atof (value);
+
+            return 0.03f;
+        }();
+
+        return share;
+    }
+
+    static constexpr int smallFramesBeforeOwning = 30;
+
+    // Whether this frame's rects draw into the owned surface, switching to drawRect: and back by their area.
+    bool drawsOwnedFrame (const Array<Rectangle<float>>& rects)
+    {
+        if (! ownsLayer() && ! ownedLayerHandedBack)
+            return false;
+
+        const auto bounds = view.bounds.size;
+        float area = 0.0f;
+
+        for (auto& r : rects)
+            area += r.getWidth() * r.getHeight();
+
+        const auto large = area > ownedLayerMaxArea() * (float) (bounds.width * bounds.height);
+
+        if (! ownedLayerHandedBack && large)
+        {
+            ownedLayerHandedBack = true;
+            ownedLayer.release (view.layer);
+            [view setNeedsDisplay: YES];
+        }
+        else if (ownedLayerHandedBack)
+        {
+            smallOwnedFrames = large ? 0 : smallOwnedFrames + 1;
+
+            if (smallOwnedFrames >= smallFramesBeforeOwning)
+            {
+                ownedLayerHandedBack = false;
+                smallOwnedFrames = 0;
+                [view setNeedsDisplay: YES];
+            }
+        }
+
+        return ! ownedLayerHandedBack;
     }
 
     void updateOwnedLayer()
@@ -1153,7 +1206,7 @@ public:
         // them. So neighbours are joined and a frame hands AppKit no more than a few rects.
         const auto rects = deferredRepaints.getCoveringRectangles (maxRectsPerFrame);
 
-        if (ownsLayer())
+        if (drawsOwnedFrame (rects))
         {
             for (auto& i : rects)
                 ownedLayer.markDirty (i);
@@ -1802,6 +1855,8 @@ public:
     RectangleList<float> deferredRepaints;
     uint32 lastRepaintTime;
     CoreGraphicsOwnedLayer ownedLayer;
+    bool ownedLayerHandedBack = false;
+    int smallOwnedFrames = 0;
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
 
