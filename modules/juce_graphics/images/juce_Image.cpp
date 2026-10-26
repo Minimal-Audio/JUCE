@@ -586,6 +586,9 @@ public:
 
     std::unique_ptr<LowLevelGraphicsContext> createLowLevelContext() override
     {
+       #if JUCE_MAC || JUCE_IOS
+        cachedImage.reset();
+       #endif
         sendDataChangeMessage();
         return std::make_unique<LowLevelGraphicsSoftwareRenderer> (Image (*this));
     }
@@ -600,8 +603,46 @@ public:
         bitmap.pixelStride = pixelStride;
 
         if (mode != Image::BitmapData::readOnly)
+        {
+           #if JUCE_MAC || JUCE_IOS
+            cachedImage.reset();
+           #endif
             sendDataChangeMessage();
+        }
     }
+
+   #if JUCE_MAC || JUCE_IOS
+    NativeExtensions getNativeExtensions() override
+    {
+        struct Wrapped
+        {
+            explicit Wrapped (SoftwarePixelData* selfIn) : self (selfIn) {}
+
+            CGContextRef getCGContext() const { return {}; }
+
+            CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace) const
+            {
+                return self->getCGImage (colourSpace);
+            }
+
+            Point<int> getTopLeft() const { return {}; }
+
+            ReferenceCountedObjectPtr<SoftwarePixelData> self;
+        };
+
+        return NativeExtensions { Wrapped { this } };
+    }
+
+    // A copy of these pixels as a CGImage, kept until they change, so a picture drawn by
+    // CoreGraphics every frame is copied once rather than on every draw.
+    CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace)
+    {
+        if (cachedImage == nullptr)
+            cachedImage = juce_copyToCoreGraphicsImage (Image::BitmapData (Image (this), Image::BitmapData::readOnly), colourSpace);
+
+        return CFUniquePtr<CGImageRef> { CGImageRetain (cachedImage.get()) };
+    }
+   #endif
 
     Ptr clone() override
     {
@@ -615,6 +656,10 @@ public:
 private:
     HeapBlock<uint8> imageData;
     const int pixelStride, lineStride;
+
+   #if JUCE_MAC || JUCE_IOS
+    CFUniquePtr<CGImageRef> cachedImage;
+   #endif
 
     JUCE_LEAK_DETECTOR (SoftwarePixelData)
 };
