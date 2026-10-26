@@ -98,7 +98,7 @@ public:
             copyFrom (surfaces[(size_t) newest], target, stale);
         }
 
-        drawInto (target, opaque, paint);
+        drawInto (target, paint);
         IOSurfaceUnlock (target.surface.get(), 0, nullptr);
 
         for (auto& s : surfaces)
@@ -214,10 +214,12 @@ private:
     }
 
     template <typename Paint>
-    void drawInto (const Surface& target, bool opaque, Paint&& paint) const
+    void drawInto (const Surface& target, Paint&& paint) const
     {
+        // JUCE's own image layout (premultiplied BGRA) even when opaque: any other layout makes CoreGraphics
+        // permute channels on every image it blends in.
         detail::ColorSpacePtr space { CGColorSpaceCreateWithName (kCGColorSpaceSRGB) };
-        const auto alpha = opaque ? kCGImageAlphaNoneSkipFirst : kCGImageAlphaPremultipliedFirst;
+        const auto alpha = kCGImageAlphaPremultipliedFirst;
         detail::ContextPtr context { CGBitmapContextCreate (IOSurfaceGetBaseAddress (target.surface.get()),
                                                             surfaceWidth,
                                                             surfaceHeight,
