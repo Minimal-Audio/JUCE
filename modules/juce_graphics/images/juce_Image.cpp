@@ -337,7 +337,7 @@ public:
     {
         struct Wrapped
         {
-            explicit Wrapped (Ptr selfIn)
+            explicit Wrapped (SubsectionPixelData* selfIn)
                 : self (selfIn) {}
 
            #if JUCE_WINDOWS
@@ -355,10 +355,7 @@ public:
 
             CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace) const
             {
-                const auto& parentNative = self->sourceImage->getNativeExtensions();
-                const auto parentImage = parentNative.getCGImage (colourSpace);
-                return CFUniquePtr<CGImageRef> { CGImageCreateWithImageInRect (parentImage.get(),
-                                                                               makeCGRect (self->area + parentNative.getTopLeft())) };
+                return self->getCGImage (colourSpace);
             }
            #endif
 
@@ -367,7 +364,7 @@ public:
                 return self->sourceImage->getNativeExtensions().getTopLeft() + self->area.getTopLeft();
             }
 
-            Ptr self;
+            ReferenceCountedObjectPtr<SubsectionPixelData> self;
         };
 
         return NativeExtensions { Wrapped { this } };
@@ -379,9 +376,34 @@ private:
         return area.getIntersection (b + area.getTopLeft());
     }
 
+   #if JUCE_MAC || JUCE_IOS
+    // A crop of the parent's CGImage, kept while the parent hands out the same one: the parent makes
+    // a new CGImage when its pixels change, and the crop it was cut from keeps the old pixels.
+    CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace)
+    {
+        const auto parentNative = sourceImage->getNativeExtensions();
+        auto parentImage = parentNative.getCGImage (colourSpace);
+
+        if (parentImage == nullptr)
+            return {};
+
+        if (parentImage.get() != croppedFrom.get())
+        {
+            croppedImage.reset (CGImageCreateWithImageInRect (parentImage.get(), makeCGRect (area + parentNative.getTopLeft())));
+            croppedFrom = std::move (parentImage);
+        }
+
+        return CFUniquePtr<CGImageRef> { CGImageRetain (croppedImage.get()) };
+    }
+   #endif
+
     friend class Image;
     const ImagePixelData::Ptr sourceImage;
     const Rectangle<int> area;
+
+   #if JUCE_MAC || JUCE_IOS
+    CFUniquePtr<CGImageRef> croppedFrom, croppedImage;
+   #endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SubsectionPixelData)
 };
