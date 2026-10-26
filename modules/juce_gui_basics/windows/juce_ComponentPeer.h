@@ -726,4 +726,32 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ComponentPeer)
 };
 
+#if JUCE_MAC || DOXYGEN
+//==============================================================================
+/** How a Mac peer's frames reach the screen. An experiment, not upstream JUCE.
+
+    - appKit: drawRect: into AppKit's backing layer, which records a display list, walks it for
+      headroom and replays it into CoreAnimation. JUCE's own way, and the default.
+    - ownedSurface: drawn by CoreGraphics on the message thread into IOSurfaces the peer owns,
+      set as the layer's contents. No display list.
+    - hybrid: ownedSurface while a frame's dirty area is small, appKit for a large one.
+    - coreAnimationLayer: drawn into a plain sublayer that CoreAnimation draws asynchronously.
+      No AppKit display list; CoreAnimation rasterises off the message thread.
+
+    Only a CoreGraphics peer leaves appKit.
+
+    @see setMacPeerDrawing
+*/
+enum class MacPeerDrawing
+{
+    appKit,
+    ownedSurface,
+    hybrid,
+    coreAnimationLayer
+};
+
+/** Sets how a Mac peer draws, at any time: the next frame draws the whole view the new way. */
+JUCE_API void setMacPeerDrawing (ComponentPeer& peer, MacPeerDrawing drawing);
+#endif
+
 } // namespace juce

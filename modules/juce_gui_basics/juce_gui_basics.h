@@ -79,9 +79,9 @@
 #endif
 
 /** Config: JUCE_COREGRAPHICS_OWN_LAYER
-    On macOS, a CoreGraphics peer draws into IOSurfaces it owns and hands each one
-    to its layer as contents, instead of drawing in drawRect: into AppKit's backing
-    layer, which records and walks a display list every frame.
+    On macOS, compiles the peer's other ways to draw (MacPeerDrawing): its own
+    IOSurfaces, the hybrid, and a CoreAnimation layer. setMacPeerDrawing picks one
+    per peer; a peer draws as JUCE does until it is told otherwise.
 */
 #ifndef JUCE_COREGRAPHICS_OWN_LAYER
  #define JUCE_COREGRAPHICS_OWN_LAYER 1

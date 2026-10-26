@@ -177,8 +177,52 @@ private:
 };
 
 //==============================================================================
+struct JuceDrawnLayerCallback
+{
+    virtual ~JuceDrawnLayerCallback() = default;
+    virtual void drawLayer (CALayer*, CGContextRef) = 0;
+};
+
+// The delegate of a layer the peer owns and CoreAnimation draws: it draws through the peer and never animates.
+class JuceDrawnLayerDelegate final : public ObjCClass<NSObject<CALayerDelegate>>
+{
+public:
+    using Callback = JuceDrawnLayerCallback;
+
+    static NSObject<CALayerDelegate>* construct (Callback* owner)
+    {
+        static JuceDrawnLayerDelegate cls;
+        auto* result = cls.createInstance();
+        object_setInstanceVariable (result, "owner", owner);
+        return result;
+    }
+
+private:
+    JuceDrawnLayerDelegate()
+        : ObjCClass ("JuceDrawnLayerDelegate_")
+    {
+        addIvar<Callback*> ("owner");
+
+        addMethod (@selector (drawLayer:inContext:), [] (id self, SEL, CALayer* layer, CGContextRef context)
+        {
+            if (auto* owner = getIvar<Callback*> (self, "owner"))
+                owner->drawLayer (layer, context);
+        });
+
+        addMethod (@selector (actionForLayer:forKey:), [] (id, SEL, CALayer*, NSString*) -> id
+        {
+            return [NSNull null];
+        });
+
+        addProtocol (@protocol (CALayerDelegate));
+        registerClass();
+    }
+};
+
+//==============================================================================
 class NSViewComponentPeer final : public ComponentPeer,
-                                  private JuceCALayerDelegateCallback
+                                  private JuceCALayerDelegateCallback,
+                                  private JuceDrawnLayerCallback
 {
 public:
     NSViewComponentPeer (Component& comp, const int windowStyleFlags, NSView* viewToAttachTo)
@@ -313,6 +357,12 @@ public:
         scopedObservers.clear();
 
         setOwner (view, nullptr);
+
+        if (drawnLayer != nullptr)
+        {
+            drawnLayer.get().delegate = nil;
+            [drawnLayer.get() removeFromSuperlayer];
+        }
 
         if ([view superview] != nil)
         {
@@ -1079,8 +1129,32 @@ public:
         }
     }
 
-    // A CoreGraphics peer on a plain backing layer draws into surfaces it owns (CoreGraphicsOwnedLayer).
-    bool ownsLayer() const
+    //==============================================================================
+    // How this peer's frames reach the screen (MacPeerDrawing). setMacPeerDrawing switches it at any time: the mode
+    // being left lets go of its layer or surfaces and the next frame draws the whole view.
+    void setDrawing (MacPeerDrawing newDrawing)
+    {
+        if (drawing == newDrawing)
+            return;
+
+        if (drawnLayer != nullptr)
+        {
+            drawnLayer.get().delegate = nil;
+            [drawnLayer.get() removeFromSuperlayer];
+            drawnLayer.reset();
+            drawnLayerDelegate.reset();
+        }
+
+        ownedLayer.release (view.layer);
+        ownedLayerHandedBack = false;
+        smallOwnedFrames = 0;
+
+        drawing = newDrawing;
+        [view setNeedsDisplay: YES];
+    }
+
+    // Only a CoreGraphics peer on a plain backing layer draws anywhere but drawRect:.
+    bool canLeaveDrawRect() const
     {
        #if JUCE_COREGRAPHICS_OWN_LAYER
         #if JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS
@@ -1088,15 +1162,31 @@ public:
             return false;
         #endif
 
-        return usingCoreGraphics && view.layer != nil && ! ownedLayerHandedBack;
+        return usingCoreGraphics && view.layer != nil;
        #else
         return false;
        #endif
     }
 
-    // A frame dirtier than this share of the view goes back to drawRect:, which CoreAnimation draws on the GPU off
-    // the message thread. The owned surface comes back after a run of small frames. JUCE_OWN_LAYER_MAX_AREA overrides
-    // the share, for measuring.
+    bool drawsOwnedSurface() const
+    {
+        return canLeaveDrawRect()
+            && (drawing == MacPeerDrawing::ownedSurface || (drawing == MacPeerDrawing::hybrid && ! ownedLayerHandedBack));
+    }
+
+    bool drawsCoreAnimationLayer() const
+    {
+        return canLeaveDrawRect() && drawing == MacPeerDrawing::coreAnimationLayer;
+    }
+
+    bool drawsInUpdateLayer() const
+    {
+        return drawsOwnedSurface() || drawsCoreAnimationLayer();
+    }
+
+    // A hybrid frame dirtier than this share of the view goes back to drawRect:, which CoreAnimation draws on the
+    // GPU off the message thread. The owned surface comes back after a run of small frames. JUCE_OWN_LAYER_MAX_AREA
+    // overrides the share, for measuring.
     static float ownedLayerMaxArea()
     {
         static const float share = []
@@ -1112,11 +1202,14 @@ public:
 
     static constexpr int smallFramesBeforeOwning = 30;
 
-    // Whether this frame's rects draw into the owned surface, switching to drawRect: and back by their area.
-    bool drawsOwnedFrame (const Array<Rectangle<float>>& rects)
+    // Whether this frame's rects draw into the owned surface. A hybrid switches to drawRect: and back by their area.
+    bool takesOwnedFrame (const Array<Rectangle<float>>& rects)
     {
-        if (! ownsLayer() && ! ownedLayerHandedBack)
+        if (! canLeaveDrawRect() || (drawing != MacPeerDrawing::ownedSurface && drawing != MacPeerDrawing::hybrid))
             return false;
+
+        if (drawing == MacPeerDrawing::ownedSurface)
+            return true;
 
         const auto bounds = view.bounds.size;
         float area = 0.0f;
@@ -1147,8 +1240,14 @@ public:
         return ! ownedLayerHandedBack;
     }
 
-    void updateOwnedLayer()
+    void updateLayer()
     {
+        if (drawsCoreAnimationLayer())
+        {
+            updateDrawnLayer();
+            return;
+        }
+
         const auto scale = [view window] != nil ? (float) [view window].backingScaleFactor : 1.0f;
 
         ownedLayer.update (view.layer,
@@ -1156,6 +1255,49 @@ public:
                            scale,
                            component.isOpaque(),
                            [this] (CGContextRef cg, NSRect r) { drawRectWithContext (cg, r); });
+    }
+
+    // The CoreAnimation layer: a plain sublayer that CoreAnimation draws asynchronously, so AppKit's backing layer
+    // records no display list of ours.
+    void updateDrawnLayer()
+    {
+        if (drawnLayer == nullptr)
+        {
+            drawnLayerDelegate.reset (JuceDrawnLayerDelegate::construct (this));
+            drawnLayer.reset ([[CALayer alloc] init]);
+            drawnLayer.get().delegate = drawnLayerDelegate.get();
+            drawnLayer.get().drawsAsynchronously = YES;
+            drawnLayer.get().needsDisplayOnBoundsChange = YES;
+            drawnLayer.get().anchorPoint = CGPointZero;
+            view.layer.contents = nil;
+            [view.layer addSublayer: drawnLayer.get()];
+        }
+
+        const auto scale = [view window] != nil ? [view window].backingScaleFactor : 1.0;
+        auto* layer = drawnLayer.get();
+
+        if (! CGRectEqualToRect (layer.frame, view.bounds) || ! approximatelyEqual (layer.contentsScale, scale))
+        {
+            [CATransaction begin];
+            [CATransaction setDisableActions: YES];
+            layer.frame = view.bounds;
+            layer.contentsScale = scale;
+            layer.opaque = component.isOpaque();
+            [CATransaction commit];
+            [layer setNeedsDisplay];
+        }
+    }
+
+    void drawLayer (CALayer* layer, CGContextRef context) override
+    {
+        // The view's flipped coordinates, as drawRect: has them.
+        if (! layer.contentsAreFlipped)
+        {
+            CGContextTranslateCTM (context, 0, layer.bounds.size.height);
+            CGContextScaleCTM (context, 1, -1);
+        }
+
+        drawRectWithContext (context, CGContextGetClipBoundingBox (context));
     }
 
     void repaint (const Rectangle<int>& area) override
@@ -1206,7 +1348,14 @@ public:
         // them. So neighbours are joined and a frame hands AppKit no more than a few rects.
         const auto rects = deferredRepaints.getCoveringRectangles (maxRectsPerFrame);
 
-        if (drawsOwnedFrame (rects))
+        if (drawsCoreAnimationLayer())
+        {
+            updateDrawnLayer();
+
+            for (auto& i : rects)
+                [drawnLayer.get() setNeedsDisplayInRect: makeCGRect (i)];
+        }
+        else if (takesOwnedFrame (rects))
         {
             for (auto& i : rects)
                 ownedLayer.markDirty (i);
@@ -1857,6 +2006,9 @@ public:
     CoreGraphicsOwnedLayer ownedLayer;
     bool ownedLayerHandedBack = false;
     int smallOwnedFrames = 0;
+    MacPeerDrawing drawing = MacPeerDrawing::appKit;
+    NSUniquePtr<CALayer> drawnLayer;
+    NSUniquePtr<NSObject<CALayerDelegate>> drawnLayerDelegate;
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
 
@@ -2382,13 +2534,13 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
         addMethod (@selector (wantsUpdateLayer), [] (id self, SEL)
         {
             auto* owner = getOwner (self);
-            return owner != nullptr && owner->ownsLayer();
+            return owner != nullptr && owner->drawsInUpdateLayer();
         });
 
         addMethod (@selector (updateLayer), [] (id self, SEL)
         {
             if (auto* owner = getOwner (self))
-                owner->updateOwnedLayer();
+                owner->updateLayer();
         });
 
         addMethod (@selector (wantsDefaultClipping), [] (id, SEL) { return YES; }); // (this is the default, but may want to customise it in future)
@@ -3147,6 +3299,12 @@ void Desktop::allowedOrientationsChanged() {}
 ComponentPeer* Component::createNewPeer (int styleFlags, void* windowToAttachTo)
 {
     return new NSViewComponentPeer (*this, styleFlags, (NSView*) windowToAttachTo);
+}
+
+void setMacPeerDrawing (ComponentPeer& peer, MacPeerDrawing drawing)
+{
+    if (auto* nsPeer = dynamic_cast<NSViewComponentPeer*> (&peer))
+        nsPeer->setDrawing (drawing);
 }
 
 //==============================================================================
