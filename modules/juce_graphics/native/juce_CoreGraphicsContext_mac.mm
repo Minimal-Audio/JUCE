@@ -492,16 +492,47 @@ void CoreGraphicsContext::clipToPath (const Path& path, const AffineTransform& t
     lastClipRect.reset();
 }
 
+// MKU: a mask drawn every frame from an RGB or ARGB picture was converted to a single channel, and copied, on every
+// call. Each conversion is kept per thread against the picture's own CGImage, which it remakes when its pixels change.
+static detail::ImagePtr getAlphaMask (const Image& sourceImage, CGColorSpaceRef rgbColourSpace, CGColorSpaceRef greyColourSpace)
+{
+    if (sourceImage.getFormat() == Image::SingleChannel)
+        return CoreGraphicsPixelData::getCachedImageRef (sourceImage, greyColourSpace);
+
+    const auto convert = [&]
+    {
+        return CoreGraphicsPixelData::getCachedImageRef (sourceImage.convertedToFormat (Image::SingleChannel), greyColourSpace);
+    };
+
+    const auto pixelData = sourceImage.getPixelData();
+    auto source = pixelData != nullptr ? pixelData->getNativeExtensions().getCGImage (rgbColourSpace) : nullptr;
+
+    if (source == nullptr)
+        return convert();
+
+    struct Mask
+    {
+        detail::ImagePtr source, mask;
+    };
+
+    thread_local std::unordered_map<CGImageRef, Mask> masks;
+
+    if (masks.size() > 32)
+        masks.clear();
+
+    auto& entry = masks[source.get()];
+
+    if (entry.mask == nullptr)
+        entry = { std::move (source), convert() };
+
+    return detail::ImagePtr { CGImageRetain (entry.mask.get()) };
+}
+
 void CoreGraphicsContext::clipToImageAlpha (const Image& sourceImage, const AffineTransform& transform)
 {
     if (! transform.isSingularity())
     {
-        Image singleChannelImage (sourceImage);
-
-        if (sourceImage.getFormat() != Image::SingleChannel)
-            singleChannelImage = sourceImage.convertedToFormat (Image::SingleChannel);
-
-        detail::ImagePtr image { CoreGraphicsPixelData::getCachedImageRef (singleChannelImage, greyColourSpace.get()) };
+        auto image = getAlphaMask (sourceImage, rgbColourSpace.get(), greyColourSpace.get());
 
         flip();
         auto t = AffineTransform::verticalFlip ((float) sourceImage.getHeight()).followedBy (transform);
