@@ -46,7 +46,9 @@ namespace juce
 
     - Surfaces: up to three, so the one the window server is showing is never drawn into.
     - Dirty areas: only the areas asked for are drawn; the rest of a surface is copied
-      from the newest one.
+      from the newest one. Areas are whole points, and a list of more than a few
+      becomes its bounds, so nothing grows however long the window runs.
+    - Order: the free surface drawn longest ago is drawn next, so none is left out.
     - Scale or size change: every surface is dropped and the next frame is drawn whole.
 */
 class CoreGraphicsOwnedLayer
@@ -54,7 +56,8 @@ class CoreGraphicsOwnedLayer
 public:
     void markDirty (Rectangle<float> area)
     {
-        pending.add (area);
+        pending.add (area.getSmallestIntegerContainer().toFloat());
+        keepBounded (pending);
     }
 
     /*  Draws the pending areas into a free surface and makes it the layer's contents.
@@ -102,10 +105,16 @@ public:
         IOSurfaceUnlock (target.surface.get(), 0, nullptr);
 
         for (auto& s : surfaces)
+        {
             if (&s != &target)
+            {
                 s.stale.add (pending);
+                keepBounded (s.stale);
+            }
+        }
 
         target.stale.clear();
+        target.lastDrawn = ++framesDrawn;
         pending.clear();
         newest = (int) (&target - surfaces.data());
 
@@ -137,15 +146,30 @@ private:
     {
         std::unique_ptr<std::remove_pointer_t<IOSurfaceRef>, SurfaceDeleter> surface;
         RectangleList<float> stale;
+        uint64 lastDrawn = 0;
     };
 
     static constexpr size_t maxSurfaces = 3;
+    static constexpr int maxAreas = 8;
+
+    // More areas than this cost more to track than to draw: the list becomes its bounds.
+    static void keepBounded (RectangleList<float>& areas)
+    {
+        if (areas.getNumRectangles() > maxAreas)
+            areas = areas.getBounds();
+    }
 
     Surface& takeFreeSurface (Rectangle<float> bounds)
     {
+        Surface* oldestFree = nullptr;
+
         for (size_t i = 0; i < surfaces.size(); ++i)
             if ((int) i != newest && ! IOSurfaceIsInUse (surfaces[i].surface.get()))
-                return surfaces[i];
+                if (oldestFree == nullptr || surfaces[i].lastDrawn < oldestFree->lastDrawn)
+                    oldestFree = &surfaces[i];
+
+        if (oldestFree != nullptr)
+            return *oldestFree;
 
         if (surfaces.size() < maxSurfaces)
         {
@@ -157,8 +181,14 @@ private:
             return surfaces.back();
         }
 
-        // Every surface is still on screen: draw into the oldest rather than wait.
-        return surfaces[(size_t) (newest + 1) % surfaces.size()];
+        // Every surface is still on screen: draw into the one drawn longest ago rather than wait.
+        auto* oldest = &surfaces[(size_t) (newest + 1) % surfaces.size()];
+
+        for (auto& s : surfaces)
+            if (s.lastDrawn < oldest->lastDrawn)
+                oldest = &s;
+
+        return *oldest;
     }
 
     IOSurfaceRef createSurface() const
@@ -247,6 +277,7 @@ private:
     std::vector<Surface> surfaces;
     RectangleList<float> pending;
     int newest = -1;
+    uint64 framesDrawn = 0;
     size_t surfaceWidth = 0, surfaceHeight = 0;
     float surfaceScale = 0.0f;
 };
