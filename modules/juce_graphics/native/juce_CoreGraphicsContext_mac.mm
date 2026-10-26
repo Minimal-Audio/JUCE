@@ -603,7 +603,9 @@ void CoreGraphicsContext::beginTransparencyLayer (float opacity)
 {
     saveState();
     CGContextSetAlpha (context.get(), opacity);
-    CGContextBeginTransparencyLayer (context.get(), nullptr);
+
+    // MKU: bounded by the clip, so a recorded layer holds what the clip lets through rather than the whole context.
+    CGContextBeginTransparencyLayerWithRect (context.get(), CGContextGetClipBoundingBox (context.get()), nullptr);
 }
 
 void CoreGraphicsContext::endTransparencyLayer()
