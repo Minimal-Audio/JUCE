@@ -52,7 +52,7 @@
   minimumCppStandard: 17
 
   dependencies:       juce_graphics juce_data_structures
-  OSXFrameworks:      Cocoa QuartzCore
+  OSXFrameworks:      Cocoa QuartzCore IOSurface
   WeakOSXFrameworks:  Metal MetalKit
   iOSFrameworks:      CoreServices UIKit
   WeakiOSFrameworks:  Metal MetalKit UniformTypeIdentifiers UserNotifications
@@ -76,6 +76,15 @@
 */
 #ifndef JUCE_ENABLE_REPAINT_DEBUGGING
  #define JUCE_ENABLE_REPAINT_DEBUGGING 0
+#endif
+
+/** Config: JUCE_COREGRAPHICS_OWN_LAYER
+    On macOS, a CoreGraphics peer draws into IOSurfaces it owns and hands each one
+    to its layer as contents, instead of drawing in drawRect: into AppKit's backing
+    layer, which records and walks a display list every frame.
+*/
+#ifndef JUCE_COREGRAPHICS_OWN_LAYER
+ #define JUCE_COREGRAPHICS_OWN_LAYER 1
 #endif
 
 /** Config: JUCE_USE_XRANDR

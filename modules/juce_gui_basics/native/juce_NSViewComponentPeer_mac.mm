@@ -1079,6 +1079,32 @@ public:
         }
     }
 
+    // A CoreGraphics peer on a plain backing layer draws into surfaces it owns (CoreGraphicsOwnedLayer).
+    bool ownsLayer() const
+    {
+       #if JUCE_COREGRAPHICS_OWN_LAYER
+        #if JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS
+        if (metalRenderer != nullptr)
+            return false;
+        #endif
+
+        return usingCoreGraphics && view.layer != nil;
+       #else
+        return false;
+       #endif
+    }
+
+    void updateOwnedLayer()
+    {
+        const auto scale = [view window] != nil ? (float) [view window].backingScaleFactor : 1.0f;
+
+        ownedLayer.update (view.layer,
+                           view.bounds.size,
+                           scale,
+                           component.isOpaque(),
+                           [this] (CGContextRef cg, NSRect r) { drawRectWithContext (cg, r); });
+    }
+
     void repaint (const Rectangle<int>& area) override
     {
         // In 10.11 changes were made to the way the OS handles repaint regions, and it seems that it can
@@ -1125,8 +1151,20 @@ public:
         // view of 300 cached images, 0.4 ms for one rect, 1.9 ms for two, 5.4 ms for five. One box
         // round rects far apart moves the cost to the raster, which then draws everything between
         // them. So neighbours are joined and a frame hands AppKit no more than a few rects.
-        for (auto& i : deferredRepaints.getCoveringRectangles (maxRectsPerFrame))
-            [view setNeedsDisplayInRect: makeCGRect (i)];
+        const auto rects = deferredRepaints.getCoveringRectangles (maxRectsPerFrame);
+
+        if (ownsLayer())
+        {
+            for (auto& i : rects)
+                ownedLayer.markDirty (i);
+
+            [view setNeedsDisplay: YES];
+        }
+        else
+        {
+            for (auto& i : rects)
+                [view setNeedsDisplayInRect: makeCGRect (i)];
+        }
 
         lastRepaintTime = Time::getMillisecondCounter();
 
@@ -1763,6 +1801,7 @@ public:
     Rectangle<float> lastSizeBeforeZoom;
     RectangleList<float> deferredRepaints;
     uint32 lastRepaintTime;
+    CoreGraphicsOwnedLayer ownedLayer;
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
 
@@ -2283,6 +2322,18 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
 
                 p->redirectMovedOrResized();
             }
+        });
+
+        addMethod (@selector (wantsUpdateLayer), [] (id self, SEL)
+        {
+            auto* owner = getOwner (self);
+            return owner != nullptr && owner->ownsLayer();
+        });
+
+        addMethod (@selector (updateLayer), [] (id self, SEL)
+        {
+            if (auto* owner = getOwner (self))
+                owner->updateOwnedLayer();
         });
 
         addMethod (@selector (wantsDefaultClipping), [] (id, SEL) { return YES; }); // (this is the default, but may want to customise it in future)
