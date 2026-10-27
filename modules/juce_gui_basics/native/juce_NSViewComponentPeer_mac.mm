@@ -715,6 +715,11 @@ public:
         return usingCoreGraphics ? 1 : 0;
     }
 
+    // Minimal Audio modification start #48
+    // Draws through the layer, or stops: CoreAnimationLayer::setUsed
+    void setUsesCoreAnimationLayer (bool shouldUse) override { coreAnimationLayer.setUsed (shouldUse, view); }
+    // Minimal Audio modification end #48
+
     void setCurrentRenderingEngine ([[maybe_unused]] int index) override
     {
        #if USE_COREGRAPHICS_RENDERING
@@ -1120,8 +1125,11 @@ public:
         const auto frameSize = view.frame.size;
         const Rectangle currentBounds { (float) frameSize.width, (float) frameSize.height };
 
+        // Minimal Audio modification start #48
+        // Each rect to the CoreAnimation layer when the peer draws through it, else to the view: CoreAnimationLayer
         for (auto& i : deferredRepaints)
-            [view setNeedsDisplayInRect: makeCGRect (i)];
+            coreAnimationLayer.setNeedsDisplayInRect (view, makeCGRect (i));
+        // Minimal Audio modification end #48
 
         lastRepaintTime = Time::getMillisecondCounter();
 
@@ -1757,6 +1765,10 @@ public:
 
     Rectangle<float> lastSizeBeforeZoom;
     RectangleList<float> deferredRepaints;
+    // Minimal Audio modification start #48
+    // The layer, drawn through drawRectWithContext and torn down with the peer: CoreAnimationLayer
+    CoreAnimationLayer coreAnimationLayer { [this] (CGContextRef context, CGRect area) { drawRectWithContext (context, area); } };
+    // Minimal Audio modification end #48
     uint32 lastRepaintTime;
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
@@ -2279,6 +2291,12 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
                 p->redirectMovedOrResized();
             }
         });
+
+        // Minimal Audio modification start #48
+        // With the layer in use the view draws nothing, and keeps the layer its size: CoreAnimationLayer
+        addMethod (@selector (wantsUpdateLayer), [] (id self, SEL) { auto* p = getOwner (self); return p != nullptr && p->coreAnimationLayer.isUsed(); });
+        addMethod (@selector (updateLayer), [] (id self, SEL) { if (auto* p = getOwner (self)) p->coreAnimationLayer.update (p->view); });
+        // Minimal Audio modification end #48
 
         addMethod (@selector (wantsDefaultClipping), [] (id, SEL) { return YES; }); // (this is the default, but may want to customise it in future)
 

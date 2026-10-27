@@ -483,6 +483,13 @@ public:
     virtual int getCurrentRenderingEngine() const;
     virtual void setCurrentRenderingEngine (int index);
 
+    // Minimal Audio modification start #48
+    // On macOS, draws through a CoreAnimation layer: juce_CoreAnimationLayer_mac.h
+    /** On macOS, draws this peer through a layer CoreAnimation draws off the message thread, in place of
+        drawRect:. Off by default, switchable at any time; does nothing elsewhere. */
+    virtual void setUsesCoreAnimationLayer (bool shouldUse) { ignoreUnused (shouldUse); }
+    // Minimal Audio modification end #48
+
     //==============================================================================
     /** On desktop platforms this method will check all the mouse and key states and return
         a ModifierKeys object representing them.
