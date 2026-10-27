@@ -977,6 +977,32 @@ void CoreGraphicsContext::drawGlyphs (Span<const uint16_t> glyphs,
     }
 }
 
+// Minimal Audio modification start #48
+static CGGradientRef createGradient (const ColourGradient& g, CGColorSpaceRef colourSpace);
+
+// MKU: every gradient fill made a new CGGradient, so a frame of the same few gradients held one per fill. Kept per
+// thread by their stops, in the context's sRGB space.
+static CGGradientRef getGradient (const ColourGradient& g, CGColorSpaceRef colourSpace)
+{
+    std::vector<std::pair<double, uint32>> stops ((size_t) g.getNumColours());
+
+    for (int i = 0; i < g.getNumColours(); ++i)
+        stops[(size_t) i] = { g.getColourPosition (i), g.getColour (i).getARGB() };
+
+    thread_local std::map<std::vector<std::pair<double, uint32>>, detail::GradientPtr> gradients;
+
+    if (gradients.size() > 256)
+        gradients.clear();
+
+    auto& gradient = gradients[std::move (stops)];
+
+    if (gradient == nullptr)
+        gradient.reset (createGradient (g, colourSpace));
+
+    return CGGradientRetain (gradient.get());
+}
+
+// Minimal Audio modification end #48
 static CGGradientRef createGradient (const ColourGradient& g, CGColorSpaceRef colourSpace)
 {
     auto numColours = g.getNumColours();
@@ -1011,7 +1037,9 @@ void CoreGraphicsContext::drawGradient()
     auto& g = *state->fillType.gradient;
 
     if (state->gradient == nullptr)
-        state->gradient.reset (createGradient (g, rgbColourSpace.get()));
+        // Minimal Audio modification start #48
+        state->gradient.reset (getGradient (g, rgbColourSpace.get()));
+        // Minimal Audio modification end #48
 
     auto p1 = convertToCGPoint (g.point1);
     auto p2 = convertToCGPoint (g.point2);
