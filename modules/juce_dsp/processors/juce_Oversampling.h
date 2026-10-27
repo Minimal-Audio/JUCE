@@ -122,6 +122,7 @@ public:
     */
     SampleType getLatencyInSamples() const noexcept;
 
+    // Minimal Audio modification start #4
     /**
      * Returns the latency in samples due to the upsampling part of the overall oversampling operation.
      *
@@ -135,6 +136,7 @@ public:
      * Note: Does not account for integer latency.
      */
     SampleType getUncompensatedDownsamplingLatencyInSamples() const noexcept;
+    // Minimal Audio modification end #4
 
 
     /** Returns the current oversampling factor. */

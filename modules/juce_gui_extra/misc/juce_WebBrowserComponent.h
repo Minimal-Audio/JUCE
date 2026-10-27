@@ -216,6 +216,7 @@ public:
                 return withMember (*this, &WinWebView2::backgroundColour, colour);
             }
 
+            // Minimal Audio modification start #38
             /** Floors the WebView's effective render scale so content stays sharp when the
                 host scales the editor up on a low-DPI (100%) display. The counterpart to
                 AppleWkWebView::withMinimumDeviceScaleFactor.
@@ -233,6 +234,7 @@ public:
             {
                 return withMember (*this, &WinWebView2::minimumDeviceScaleFactor, scale);
             }
+            // Minimal Audio modification end #38
 
             //==============================================================================
             File getDLLLocation() const                          { return dllLocation; }
@@ -240,14 +242,18 @@ public:
             bool getIsStatusBarDisabled() const noexcept         { return disableStatusBar; }
             bool getIsBuiltInErrorPageDisabled() const noexcept  { return disableBuiltInErrorPage; }
             Colour getBackgroundColour() const                   { return backgroundColour; }
+            // Minimal Audio modification start #38
             auto getMinimumDeviceScaleFactor() const             { return minimumDeviceScaleFactor; }
+            // Minimal Audio modification end #38
 
         private:
             //==============================================================================
             File dllLocation, userDataFolder;
             bool disableStatusBar = false, disableBuiltInErrorPage = false;
             Colour backgroundColour;
+            // Minimal Audio modification start #38
             std::optional<double> minimumDeviceScaleFactor;
+            // Minimal Audio modification end #38
         };
 
         /** Options specific to the WkWebView backend used on Apple systems. These options will be
@@ -279,6 +285,7 @@ public:
                 return withMember (*this, &AppleWkWebView::acceptsFirstMouse, false);
             }
 
+            // Minimal Audio modification start #24
             /** Sets the background colour that the WKWebView paints underneath all web content.
 
                 By default WKWebView's NSView paints an opaque white background until the page
@@ -299,7 +306,9 @@ public:
 
                 return withMember (*this, &AppleWkWebView::backgroundColour, colour);
             }
+            // Minimal Audio modification end #24
 
+            // Minimal Audio modification start #38
             /** Floors the WebView's effective render scale so content stays sharp when the
                 host scales the editor up on a low-DPI (non-Retina) display.
 
@@ -319,17 +328,26 @@ public:
             {
                 return withMember (*this, &AppleWkWebView::minimumDeviceScaleFactor, scale);
             }
+            // Minimal Audio modification end #38
 
             auto getAllowAccessToEnclosingDirectory() const { return allowAccessToEnclosingDirectory; }
+            // Minimal Audio modification start #24
             auto getAcceptsFirstMouse() const                { return acceptsFirstMouse; }
             auto getBackgroundColour() const                 { return backgroundColour; }
+            // Minimal Audio modification end #24
+            // Minimal Audio modification start #38
             auto getMinimumDeviceScaleFactor() const         { return minimumDeviceScaleFactor; }
+            // Minimal Audio modification end #38
 
         private:
             bool allowAccessToEnclosingDirectory = false;
             bool acceptsFirstMouse = true;
+            // Minimal Audio modification start #24
             std::optional<Colour> backgroundColour;
+            // Minimal Audio modification end #24
+            // Minimal Audio modification start #38
             std::optional<double> minimumDeviceScaleFactor;
+            // Minimal Audio modification end #38
         };
 
         /** Specifies options that apply to the Windows implementation when the WebView2 feature is
@@ -656,6 +674,7 @@ public:
     */
     void emitEventIfBrowserIsVisible (const Identifier& eventId, const var& object);
 
+    // Minimal Audio modification start #25
     /** Controls whether key events received by the underlying OS web surface should be
         forwarded to the host responder chain instead of being consumed by the web view.
 
@@ -685,6 +704,7 @@ public:
         @endcode
     */
     void setEditableFocusActive (bool editableFocusActive);
+    // Minimal Audio modification end #25
 
     //==============================================================================
     /** This callback is called when the browser is about to navigate

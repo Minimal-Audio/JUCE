@@ -173,6 +173,7 @@ StringPool& StringPool::getGlobalPool() noexcept
     return pool;
 }
 
+// Minimal Audio modification start #9
 std::pair<bool, int> StringPool::locateOrGetInsertIndex (const String& newString, int startIndex, int endIndex) const
 {
     int start = startIndex;
@@ -296,5 +297,6 @@ bool StringPool::isStringInPool (const String& str) const noexcept
     return strings.getReference (index).getCharPointer() == str.getCharPointer();
 }
 #endif
+// Minimal Audio modification end #9
 
 } // namespace juce

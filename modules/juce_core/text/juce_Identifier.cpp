@@ -83,6 +83,7 @@ bool Identifier::isValidIdentifier (const String& possibleIdentifier) noexcept
             && possibleIdentifier.containsOnly ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-:#@$%");
 }
 
+// Minimal Audio modification start #20
 Identifier Identifier::getIdentifierFromInPoolString (const String& nm)
 {
     Identifier id;
@@ -100,5 +101,6 @@ Identifier Identifier::getIdentifierFromInPoolString (const String& nm)
 
     return id;
 }
+// Minimal Audio modification end #20
 
 } // namespace juce

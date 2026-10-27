@@ -580,7 +580,8 @@ void CoreGraphicsContext::setFill (const FillType& fillType)
 
     if (fillType.isColour())
     {
-        // MKU: a frame sets a few colours hundreds of times, and every cached picture's blit sets one, so each
+        // Minimal Audio modification start #44
+        // A frame sets a few colours hundreds of times, and every cached picture's blit sets one, so each
         // used to allocate a CGColor and free it (~380 ns). Kept per thread by ARGB in the context's sRGB space.
         thread_local std::unordered_map<uint32, detail::ColorPtr> colours;
 
@@ -600,6 +601,7 @@ void CoreGraphicsContext::setFill (const FillType& fillType)
         }
 
         CGContextSetFillColorWithColor (context.get(), color.get());
+        // Minimal Audio modification end #44
         CGContextSetStrokeColorWithColor (context.get(), color.get());
         CGContextSetAlpha (context.get(), 1.0f);
     }

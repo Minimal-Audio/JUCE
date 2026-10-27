@@ -47,9 +47,11 @@ struct Oversampling<SampleType>::OversamplingStage
     //==============================================================================
     virtual SampleType getLatencyInSamples() const = 0;
 
+    // Minimal Audio modification start #4
     virtual SampleType getUpsamplingLatencyInSamples() const = 0;
 
     virtual SampleType getDownsamplingLatencyInSamples() const = 0;
+    // Minimal Audio modification end #4
 
 
     virtual void initProcessing (size_t maximumNumberOfSamplesBeforeOversampling)
@@ -112,6 +114,7 @@ struct OversamplingDummy final : public Oversampling<SampleType>::OversamplingSt
         outputBlock.copyFrom (ParentType::getProcessedSamples (outputBlock.getNumSamples()));
     }
 
+    // Minimal Audio modification start #4
     SampleType getUpsamplingLatencyInSamples() const override {
         return 0;
     }
@@ -119,6 +122,7 @@ struct OversamplingDummy final : public Oversampling<SampleType>::OversamplingSt
     SampleType getDownsamplingLatencyInSamples() const override {
         return 0;
     }
+    // Minimal Audio modification end #4
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OversamplingDummy)
 };
@@ -163,6 +167,7 @@ struct Oversampling2TimesEquirippleFIR final : public Oversampling<SampleType>::
         return static_cast<SampleType> (coefficientsUp.getFilterOrder() + coefficientsDown.getFilterOrder()) * 0.5f;
     }
 
+    // Minimal Audio modification start #4
     SampleType getUpsamplingLatencyInSamples() const override
     {
         return static_cast<SampleType>(coefficientsUp.getFilterOrder()) * static_cast<SampleType>(0.5);
@@ -171,6 +176,7 @@ struct Oversampling2TimesEquirippleFIR final : public Oversampling<SampleType>::
     SampleType getDownsamplingLatencyInSamples() const override {
         return static_cast<SampleType>(coefficientsDown.getFilterOrder()) * static_cast<SampleType>(0.5);
     }
+    // Minimal Audio modification end #4
 
     void reset() override
     {
@@ -304,6 +310,7 @@ struct Oversampling2TimesPolyphaseIIR final : public Oversampling<SampleType>::O
     {
         auto structureUp = FilterDesign<SampleType>::designIIRLowpassHalfBandPolyphaseAllpassMethod (normalisedTransitionWidthUp, stopbandAmplitudedBUp);
         auto coeffsUp = getCoefficients (structureUp);
+        // Minimal Audio modification start #4
         upLatency = static_cast<SampleType> (-(coeffsUp.getPhaseForFrequency (0.0001, 1.0)) / (0.0001 * MathConstants<double>::twoPi));
 
         auto structureDown = FilterDesign<SampleType>::designIIRLowpassHalfBandPolyphaseAllpassMethod (normalisedTransitionWidthDown, stopbandAmplitudedBDown);
@@ -311,6 +318,7 @@ struct Oversampling2TimesPolyphaseIIR final : public Oversampling<SampleType>::O
         downLatency = static_cast<SampleType> (-(coeffsDown.getPhaseForFrequency (0.0001, 1.0)) / (0.0001 * MathConstants<double>::twoPi));
 
         latency = upLatency + downLatency;
+        // Minimal Audio modification end #4
 
         for (auto i = 0; i < structureUp.directPath.size(); ++i)
             coefficientsUp.add (structureUp.directPath.getObjectPointer (i)->coefficients[0]);
@@ -335,6 +343,7 @@ struct Oversampling2TimesPolyphaseIIR final : public Oversampling<SampleType>::O
         return latency;
     }
 
+    // Minimal Audio modification start #4
     SampleType getUpsamplingLatencyInSamples() const override
     {
         return upLatency;
@@ -344,6 +353,7 @@ struct Oversampling2TimesPolyphaseIIR final : public Oversampling<SampleType>::O
     {
         return downLatency;
     }
+    // Minimal Audio modification end #4
 
 
     void reset() override
@@ -561,8 +571,10 @@ private:
     //==============================================================================
     Array<SampleType> coefficientsUp, coefficientsDown;
 
+    // Minimal Audio modification start #4
     SampleType upLatency;
     SampleType downLatency;
+    // Minimal Audio modification end #4
     SampleType latency;
 
     AudioBuffer<SampleType> v1Up, v1Down;
@@ -688,6 +700,7 @@ SampleType Oversampling<SampleType>::getLatencyInSamples() const noexcept
     return shouldUseIntegerLatency ? latency + fractionalDelay : latency;
 }
 
+// Minimal Audio modification start #4
 template <typename SampleType>
 SampleType Oversampling<SampleType>::getUncompensatedUpsamplingLatencyInSamples() const noexcept {
     auto latency = static_cast<SampleType> (0);
@@ -715,6 +728,7 @@ SampleType Oversampling<SampleType>::getUncompensatedDownsamplingLatencyInSample
 
     return latency;
 }
+// Minimal Audio modification end #4
 
 template <typename SampleType>
 SampleType Oversampling<SampleType>::getUncompensatedLatency() const noexcept

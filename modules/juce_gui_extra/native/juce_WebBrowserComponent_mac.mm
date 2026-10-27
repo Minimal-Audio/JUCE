@@ -176,6 +176,7 @@ static const char* lastFocusChangeMemberName = "lastFocusChangeHandle";
     return getIvar<LastFocusChange*> (instance, lastFocusChangeMemberName);
 }
 
+// Minimal Audio modification start #25
 // Per-instance pointer to the WKWebViewImpl's std::atomic<bool> tracking whether
 // the JS layer has reported editable DOM focus. Read on every key event; when
 // false (the default) the responder forwards keys to the host so the DAW
@@ -191,7 +192,9 @@ static const char* editableFocusActiveMemberName = "editableFocusActiveHandle";
 {
     return getIvar<std::atomic<bool>*> (instance, editableFocusActiveMemberName);
 }
+// Minimal Audio modification end #25
 
+// Minimal Audio modification start #38
 // Per-instance pointer to the WKWebViewImpl's minimum-render-scale value (0 = feature
 // off). Read in viewDidChangeBackingProperties so pageZoom is (re)applied as the window
 // attaches and as it moves between displays of differing backingScaleFactor.
@@ -206,6 +209,7 @@ static const char* minDeviceScaleMemberName = "minDeviceScaleHandle";
 {
     return getIvar<double*> (instance, minDeviceScaleMemberName);
 }
+// Minimal Audio modification end #38
 
 #if JUCE_MAC
 template <class WebViewClass>
@@ -217,9 +221,12 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
         : Base ("WebViewKeyEquivalentResponder_")
     {
         this->template addIvar<LastFocusChange*> (lastFocusChangeMemberName);
+        // Minimal Audio modification start #25 #38
         this->template addIvar<std::atomic<bool>*> (editableFocusActiveMemberName);
         this->template addIvar<double*> (minDeviceScaleMemberName);
+        // Minimal Audio modification end #25 #38
 
+        // Minimal Audio modification start #25
         // When an editable DOM element has focus (signalled by JS via
         // __juceSetEditableFocusActive), keys are routed to WKWebView's default
         // handlers so character input reaches the DOM. Otherwise we forward them
@@ -253,10 +260,12 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
                              else
                                  [[self nextResponder] keyUp:event];
                          });
+        // Minimal Audio modification end #25
 
         this->addMethod (@selector (performKeyEquivalent:),
                          [] (id self, SEL selector, NSEvent* event)
                          {
+                             // Minimal Audio modification start #25
                              // Outside of editable focus, return NO so AppKit walks
                              // the responder chain past us — that lets host Cmd-shortcuts
                              // (DAW save, undo, transport variants) reach the plugin
@@ -266,6 +275,7 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
 
                              if (! editableFocusActive)
                                  return (BOOL) NO;
+                             // Minimal Audio modification end #25
 
                              const auto isCommandDown = [event]
                              {
@@ -340,6 +350,7 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
                             return result;
                          });
 
+        // Minimal Audio modification start #32 #38
         // When the host window moves between displays of different
         // backingScaleFactor (Retina ↔ non-Retina, or two Retina displays
         // at different scales), the WKWebView's root CALayer doesn't
@@ -388,6 +399,7 @@ struct WebViewKeyEquivalentResponder final : public ObjCClass<WebViewClass>
                                          ((WKWebView*) self).pageZoom = zoom;
                              }
                          });
+        // Minimal Audio modification end #32 #38
 
         if (acceptsFirstMouse)
             this->addMethod (@selector (acceptsFirstMouse:), [] (id, SEL, NSEvent*) { return YES; });
@@ -828,7 +840,9 @@ public:
                                                           groupName: nsEmptyString()]);
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
+        // Minimal Audio modification start #25
         setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
+        // Minimal Audio modification end #25
 
         webView.get().customUserAgent = juceStringToNS (userAgent);
 
@@ -936,15 +950,19 @@ public:
         jassertfalse;
     }
 
+    // Minimal Audio modification start #25
     void setEditableFocusActive (bool active) override
     {
         editableFocusActive.store (active, std::memory_order_relaxed);
     }
+    // Minimal Audio modification end #25
 
 private:
     WebBrowserComponent& browser;
     LastFocusChange lastFocusChange;
+    // Minimal Audio modification start #25
     std::atomic<bool> editableFocusActive { false };
+    // Minimal Audio modification end #25
     ObjCObjectHandle<WebView*> webView;
     ObjCObjectHandle<id> clickListener;
 };
@@ -1011,11 +1029,13 @@ public:
                 [config.get() setURLSchemeHandler:webViewDelegate.get() forURLScheme:@"juce"];
         }
 
+        // Minimal Audio modification start #24
         // Enable the Safari Web Inspector in all build configurations.
         // Plugins running inside a DAW are inherently a release-build target,
         // so gating this on JUCE_DEBUG made the inspector unreachable in the
         // only environment where developers actually run them.
         [preferences setValue: @(true) forKey: @"developerExtrasEnabled"];
+        // Minimal Audio modification end #24
 
        #if JUCE_MAC
         auto& webviewClass = [&]() -> auto&
@@ -1036,8 +1056,11 @@ public:
                                                       configuration: config.get()]);
 
         setLastFocusChangeHandle (webView.get(), &lastFocusChange);
+        // Minimal Audio modification start #25
         setEditableFocusActiveHandle (webView.get(), &editableFocusActive);
+        // Minimal Audio modification end #25
 
+        // Minimal Audio modification start #38
         // Render-scale floor (off unless withMinimumDeviceScaleFactor is set). Applied via
         // pageZoom in viewDidChangeBackingProperties, which fires on window-attach and on
         // display moves, so the handle must be in place before addAndMakeVisible.
@@ -1045,6 +1068,7 @@ public:
                                              .getMinimumDeviceScaleFactor()
                                              .value_or (0.0);
         setMinDeviceScaleHandle (webView.get(), &minDeviceScaleFactor);
+        // Minimal Audio modification end #38
        #else
         webView.reset ([[WKWebView alloc] initWithFrame: CGRectMake (0, 0, 100.0f, 100.0f)
                                           configuration: config.get()]);
@@ -1056,6 +1080,7 @@ public:
         [webView.get() setNavigationDelegate: webViewDelegate.get()];
         [webView.get() setUIDelegate:         webViewDelegate.get()];
 
+        // Minimal Audio modification start #24
         // The `developerExtrasEnabled` preference above is the legacy path
         // and remains sufficient on older macOS. From 13.3 / iOS 16.4 onward
         // Apple requires the public `inspectable` property to be set as well
@@ -1087,7 +1112,9 @@ public:
                 // fall back silently rather than crashing the host.
                 (void) exception;
             }
+        // Minimal Audio modification end #24
 
+            // Minimal Audio modification start #34
             // Note: we deliberately do NOT promote the WKWebView to a
             // layer-backed view (setWantsLayer:YES) or stamp a transparent
             // layer.backgroundColor here. That promotion pins the view's
@@ -1099,7 +1126,9 @@ public:
             // scale in sync across display moves on its own. drawsBackground = NO
             // plus setUnderPageBackgroundColor below is enough to kill the
             // first-paint flash without touching the layer.
+            // Minimal Audio modification end #34
 
+            // Minimal Audio modification start #24
             if (@available (macOS 12.0, iOS 15.0, *))
             {
                 const auto c = *bg;
@@ -1117,6 +1146,7 @@ public:
                 [webView.get() setUnderPageBackgroundColor: colour];
             }
         }
+            // Minimal Audio modification end #24
 
         setView (webView.get());
         owner.owner.addAndMakeVisible (this);
@@ -1350,10 +1380,12 @@ public:
                                           }];
     }
 
+    // Minimal Audio modification start #25
     void setEditableFocusActive (bool active) override
     {
         editableFocusActive.store (active, std::memory_order_relaxed);
     }
+    // Minimal Audio modification end #25
 
 private:
     static inline auto blankPageUrl = "about:blank";
@@ -1362,14 +1394,18 @@ private:
     DelegateConnector delegateConnector;
     bool allowAccessToEnclosingDirectory = false;
     LastFocusChange lastFocusChange;
+    // Minimal Audio modification start #25
     // Default false → keyDown forwards to the host responder chain. Flipped
     // to true by the JS layer via __juceSetEditableFocusActive when an
     // editable DOM element gains focus, so character input reaches the DOM.
     std::atomic<bool> editableFocusActive { false };
+    // Minimal Audio modification end #25
+    // Minimal Audio modification start #38
     // Render-scale floor (withMinimumDeviceScaleFactor); 0 = off. Held by value so the
     // WKWebView subclass can read it through a per-instance handle in
     // viewDidChangeBackingProperties. Outlives the webView — both are members here.
     double minDeviceScaleFactor = 0.0;
+    // Minimal Audio modification end #38
     ObjCObjectHandle<WKWebView*> webView;
     ObjCObjectHandle<id> webViewDelegate;
     String lastRequestedUrl, lastLoadedUrl;

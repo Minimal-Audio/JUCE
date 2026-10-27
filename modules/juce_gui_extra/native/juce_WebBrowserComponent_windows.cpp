@@ -663,6 +663,7 @@ public:
 
         auto webViewOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
 
+        // Minimal Audio modification start #26 #28
         // Apply the configured background colour via WebView2's documented
         // WEBVIEW2_DEFAULT_BACKGROUND_COLOR environment variable. WebView2's
         // runtime-level put_DefaultBackgroundColor (called in
@@ -679,6 +680,7 @@ public:
                                               bgColour.getGreen(),
                                               bgColour.getBlue());
         SetEnvironmentVariableW (L"WEBVIEW2_DEFAULT_BACKGROUND_COLOR", bgEnv.toWideCharPointer());
+        // Minimal Audio modification end #26 #28
 
         const auto userDataFolder = options.getWinWebView2BackendOptions().getUserDataFolder().getFullPathName();
 
@@ -1031,18 +1033,22 @@ private:
                                                        (BYTE) bgColour.getBlue() });
         }
 
+        // Minimal Audio modification start #38
         applyRasterizationScaleFloor();
+        // Minimal Audio modification end #38
 
         ComSmartPtr<ICoreWebView2Settings> settings;
         webView->get_Settings (settings.resetAndGetPointerAddress());
 
         if (settings != nullptr)
         {
+            // Minimal Audio modification start #24
             // Leave WebView2 DevTools enabled in all build configurations.
             // Plugins running inside a DAW are inherently a release-build
             // target, so disabling DevTools in release made the inspector
             // unreachable in the only environment where developers
             // actually run them.
+            // Minimal Audio modification end #24
 
             settings->put_IsStatusBarEnabled (! preferences.getWinWebView2BackendOptions().getIsStatusBarDisabled());
             settings->put_IsBuiltInErrorPageEnabled (! preferences.getWinWebView2BackendOptions().getIsBuiltInErrorPageDisabled());
@@ -1140,6 +1146,7 @@ private:
                                                     webView2ConstructionHelper.associatedWebViewNativeWindows.insert (childWindow);
                                                     AccessibilityHandler::setNativeChildForComponent (*self, childWindow);
 
+                                                    // Minimal Audio modification start #28
                                                     // Replace the WebView2 child HWND's class background brush
                                                     // with the configured colour. WebView2's class defaults to a
                                                     // white brush, which the OS paints into the HWND's initial
@@ -1157,6 +1164,7 @@ private:
                                                                                                    bgColour.getGreen(),
                                                                                                    bgColour.getBlue()));
                                                     SetClassLongPtrW (childWindow, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR> (bgBrush));
+                                                    // Minimal Audio modification end #28
                                                 }
                                             }
                                         }
@@ -1235,6 +1243,7 @@ private:
             webViewController->put_IsVisible (shouldBeVisible);
     }
 
+    // Minimal Audio modification start #38
     // Floors the WebView's rasterisation scale (withMinimumDeviceScaleFactor). Off
     // unless the option is set. On a 100%-scaled monitor the content otherwise
     // rasterises at one device pixel per CSS pixel, so when the host scales the
@@ -1268,6 +1277,7 @@ private:
 
         controller3->put_RasterizationScale (jmax (*minScale, monitorScale));
     }
+    // Minimal Audio modification end #38
 
     //==============================================================================
     WebBrowserComponent& owner;
@@ -1279,13 +1289,13 @@ private:
     ComSmartPtr<ICoreWebView2Controller> webViewController;
     ComSmartPtr<ICoreWebView2> webView;
 
-    EventRegistrationToken navigationStartingToken    { 0 },
-                           newWindowRequestedToken    { 0 },
-                           windowCloseRequestedToken  { 0 },
-                           navigationCompletedToken   { 0 },
-                           webResourceRequestedToken  { 0 },
-                           moveFocusRequestedToken    { 0 },
-                           webMessageReceivedToken    { 0 };
+    EventRegistrationToken navigationStartingToken   { 0 },
+                           newWindowRequestedToken   { 0 },
+                           windowCloseRequestedToken { 0 },
+                           navigationCompletedToken  { 0 },
+                           webResourceRequestedToken { 0 },
+                           moveFocusRequestedToken   { 0 },
+                           webMessageReceivedToken   { 0 };
 
     bool inMoveFocusRequested = false;
 
@@ -1311,10 +1321,12 @@ private:
     NativeScaleFactorNotifier scaleFactorNotifier { this,
                                                     [this] (auto)
                                                     {
+                                                        // Minimal Audio modification start #38
                                                         // Re-apply the rasterisation floor against the new
                                                         // monitor scale (auto-detection is off when the floor
                                                         // is in use), then refresh bounds.
                                                         applyRasterizationScaleFloor();
+                                                        // Minimal Audio modification end #38
                                                         componentMovedOrResized (true, true);
                                                     } };
 

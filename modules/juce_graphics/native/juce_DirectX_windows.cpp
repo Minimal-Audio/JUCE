@@ -432,7 +432,7 @@ static ComSmartPtr<ID2D1GradientStopCollection> makeGradientStopCollection (cons
     return result;
 }
 
-// Minimal Audio modification start
+// Minimal Audio modification start #36
 // Build the colour-only cache key (position + native ARGB per stop), matching the
 // colour precision of ColourGradient::tie(). Coordinates are intentionally excluded
 // because getBrush() re-applies them on every draw.
@@ -446,7 +446,7 @@ static GradientColourKey makeGradientColourKey (const ColourGradient& gradient)
                           (uint32) gradient.getColour (i).getPixelARGB().getNativeARGB());
     return key;
 }
-// Minimal Audio modification end
+// Minimal Audio modification end #36
 
 ComSmartPtr<ID2D1LinearGradientBrush> LinearGradientCache::get (const ColourGradient& gradient,
                                                                 ComSmartPtr<ID2D1DeviceContext1> deviceContext,
@@ -454,13 +454,14 @@ ComSmartPtr<ID2D1LinearGradientBrush> LinearGradientCache::get (const ColourGrad
 {
     jassert (! gradient.isRadial);
 
-    // Minimal Audio modification start (key is colour-only; geometry re-applied per draw in getBrush())
+    // Minimal Audio modification start #36
+    // The key is colour-only; getBrush() re-applies the geometry on every draw.
     return cache.get (makeGradientColourKey (gradient), [&gradient, &deviceContext, &metrics] (const auto&)
     {
         const auto gradientStops = makeGradientStopCollection (gradient, deviceContext, metrics);
         const auto p1 = gradient.point1;
         const auto p2 = gradient.point2;
-        // Minimal Audio modification end
+        // Minimal Audio modification end #36
         const auto linearGradientBrushProperties = D2D1::LinearGradientBrushProperties ({ p1.x, p1.y }, { p2.x, p2.y });
         const D2D1_BRUSH_PROPERTIES brushProps { 1.0f, D2D1::IdentityMatrix() };
 
@@ -479,14 +480,15 @@ ComSmartPtr<ID2D1RadialGradientBrush> RadialGradientCache::get (const ColourGrad
 {
     jassert (gradient.isRadial);
 
-    // Minimal Audio modification start (key is colour-only; geometry re-applied per draw in getBrush())
+    // Minimal Audio modification start #36
+    // The key is colour-only; getBrush() re-applies the geometry on every draw.
     return cache.get (makeGradientColourKey (gradient), [&gradient, &deviceContext, &metrics] (const auto&)
     {
         const auto gradientStops = makeGradientStopCollection (gradient, deviceContext, metrics);
 
         const auto p1 = gradient.point1;
         const auto p2 = gradient.point2;
-        // Minimal Audio modification end
+        // Minimal Audio modification end #36
         const auto r = p1.getDistanceFrom (p2);
         const auto radialGradientBrushProperties = D2D1::RadialGradientBrushProperties ({ p1.x, p1.y }, {}, r, r);
         const D2D1_BRUSH_PROPERTIES brushProps { 1.0F, D2D1::IdentityMatrix() };

@@ -73,8 +73,10 @@ elseif((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQU
         -Wswitch-enum
         -Wpedantic
         -Wdeprecated
+        # Minimal Audio modification start #10
         # -Wfloat-equal
         # -Wmissing-field-initializers
+        # Minimal Audio modification end #10
         $<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:OBJCXX>>:
             -Wzero-as-null-pointer-constant
             -Wunused-private-field
@@ -104,8 +106,10 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         -Wredundant-decls
         -Wno-strict-overflow
         -Wshadow
+        # Minimal Audio modification start #10
         # -Wfloat-equal
         # -Wmissing-field-initializers
+        # Minimal Audio modification end #10
         $<$<COMPILE_LANGUAGE:CXX>:
             -Woverloaded-virtual
             -Wreorder
