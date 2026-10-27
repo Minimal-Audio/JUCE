@@ -104,6 +104,9 @@ namespace
 }
 
 CGImageRef juce_createCoreGraphicsImage (const Image&, CGColorSpaceRef);
+// Minimal Audio modification start #48
+CFUniquePtr<CGImageRef> juce_copyToCoreGraphicsImage (const Image::BitmapData&, CGColorSpaceRef);
+// Minimal Audio modification end #48
 CGContextRef juce_getImageContext (const Image&);
 
 #if JUCE_IOS
