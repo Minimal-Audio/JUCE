@@ -726,4 +726,30 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ComponentPeer)
 };
 
+#if JUCE_MAC || DOXYGEN
+//==============================================================================
+/** How a Mac peer's frames reach the screen. Minimal Audio's, not upstream JUCE.
+
+    - appKit: drawRect: into AppKit's backing layer. JUCE's own way, and the default.
+      On macOS 26 AppKit records each frame as a display list, walks every list the
+      layer keeps for its HDR headroom at each commit, and replays it on the message
+      thread.
+    - coreAnimationLayer: a plain sublayer the peer owns, which CoreAnimation draws
+      asynchronously. CoreAnimation records the frame and rasterises it off the
+      message thread; AppKit records, walks and replays nothing.
+
+    Only a CoreGraphics peer leaves appKit.
+
+    @see setMacPeerDrawing
+*/
+enum class MacPeerDrawing
+{
+    appKit,
+    coreAnimationLayer
+};
+
+/** Sets how a Mac peer draws, at any time: the next frame draws the whole view the new way. */
+JUCE_API void setMacPeerDrawing (ComponentPeer& peer, MacPeerDrawing drawing);
+#endif
+
 } // namespace juce

@@ -68,6 +68,7 @@
 //==============================================================================
 #if JUCE_MAC
  #import <IOKit/pwr_mgt/IOPMLib.h>
+ #import <QuartzCore/CATransaction.h>
  #import <MetalKit/MetalKit.h>
 
  #if JUCE_MAC_API_VERSION_MIN_REQUIRED_AT_LEAST (14, 4)
