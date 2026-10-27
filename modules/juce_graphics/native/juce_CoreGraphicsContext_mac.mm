@@ -1004,7 +1004,10 @@ void CoreGraphicsContext::drawGradient()
     auto& g = *state->fillType.gradient;
 
     if (state->gradient == nullptr)
-        state->gradient.reset (createGradient (g, rgbColourSpace.get()));
+        // Minimal Audio modification start #48
+        // One CGGradient per set of stops, per thread: CGGradientCache
+        state->gradient.reset (CGGradientCache::forThisThread().get (g, [&] { return createGradient (g, rgbColourSpace.get()); }));
+        // Minimal Audio modification end #48
 
     auto p1 = convertToCGPoint (g.point1);
     auto p2 = convertToCGPoint (g.point2);

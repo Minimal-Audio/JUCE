@@ -110,5 +110,52 @@ private:
     CFUniquePtr<CGImageRef> image;
 };
 
+//==============================================================================
+/** A gradient's stops as a key: position and ARGB of each. A CGGradient holds no points,
+    so one serves every fill with the same stops.
+*/
+using GradientStops = std::vector<std::pair<double, uint32>>;
+
+inline GradientStops getGradientStops (const ColourGradient& gradient)
+{
+    GradientStops stops;
+
+    for (int i = 0; i < gradient.getNumColours(); ++i)
+        stops.emplace_back (gradient.getColourPosition (i), gradient.getColour (i).getARGB());
+
+    return stops;
+}
+
+/** This thread's CGGradients by their stops, so a frame of the same few gradients holds
+    one of each rather than one per fill. At most 256 are kept; past that it starts again.
+*/
+class CGGradientCache
+{
+public:
+    static CGGradientCache& forThisThread()
+    {
+        thread_local CGGradientCache cache;
+        return cache;
+    }
+
+    /** A retained CGGradient with gradient's stops, made by create the first time. */
+    template <typename Create>
+    CGGradientRef get (const ColourGradient& gradient, Create&& create)
+    {
+        if (gradients.size() > 256)
+            gradients.clear();
+
+        auto& kept = gradients[getGradientStops (gradient)];
+
+        if (kept == nullptr)
+            kept.reset (create());
+
+        return CGGradientRetain (kept.get());
+    }
+
+private:
+    std::map<GradientStops, detail::GradientPtr> gradients;
+};
+
 } // namespace juce
 // Minimal Audio modification end #48
