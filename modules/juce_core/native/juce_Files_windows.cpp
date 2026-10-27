@@ -1066,6 +1066,11 @@ bool JUCE_CALLTYPE Process::openDocument (const String& fileName, const String& 
 
 void File::revealToUser() const
 {
+    // Minimal Audio modification start #49
+    if (Process::isDesktopClosed ("File::revealToUser " + fullPath))
+        return;
+    // Minimal Audio modification end #49
+
     DynamicLibrary dll ("Shell32.dll");
     JUCE_LOAD_WINAPI_FUNCTION (dll, ILCreateFromPathW, ilCreateFromPathW, ITEMIDLIST*, (LPCWSTR))
     JUCE_LOAD_WINAPI_FUNCTION (dll, ILFree, ilFree, void, (ITEMIDLIST*))

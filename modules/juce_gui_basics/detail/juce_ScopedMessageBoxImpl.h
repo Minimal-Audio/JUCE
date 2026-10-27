@@ -51,6 +51,12 @@ public:
     static ScopedMessageBox show (std::unique_ptr<ScopedMessageBoxInterface>&& native,
                                   std::function<void (int)> callback)
     {
+        // Minimal Audio modification start #49
+        // No box opens and the callback is never called.
+        if (Process::isDesktopClosed ("a message box"))
+            return {};
+        // Minimal Audio modification end #49
+
         return ScopedMessageBox (runAsync (std::move (native),
                                            rawToUniquePtr (ModalCallbackFunction::create (std::move (callback)))));
     }
@@ -58,6 +64,15 @@ public:
     static int showUnmanaged (std::unique_ptr<ScopedMessageBoxInterface>&& native,
                               ModalComponentManager::Callback* cb)
     {
+        // Minimal Audio modification start #49
+        // No box opens: a synchronous one answers 0, as if dismissed, and an asynchronous one's callback is dropped.
+        if (Process::isDesktopClosed ("a message box"))
+        {
+            delete cb;
+            return 0;
+        }
+        // Minimal Audio modification end #49
+
        #if JUCE_MODAL_LOOPS_PERMITTED
         if (cb == nullptr)
             return runSync (std::move (native));

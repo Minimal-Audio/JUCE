@@ -458,6 +458,11 @@ bool JUCE_CALLTYPE Process::openDocument (const String& fileName, [[maybe_unused
 void File::revealToUser() const
 {
    #if ! JUCE_IOS
+    // Minimal Audio modification start #49
+    if (Process::isDesktopClosed ("File::revealToUser " + getFullPathName()))
+        return;
+    // Minimal Audio modification end #49
+
     if (exists())
         [[NSWorkspace sharedWorkspace] selectFile: juceStringToNS (getFullPathName()) inFileViewerRootedAtPath: nsEmptyString()];
     else if (getParentDirectory().exists())

@@ -174,6 +174,14 @@ bool FileChooser::browseForDirectory()
 
 bool FileChooser::showDialog (const int flags, FilePreviewComponent* const previewComp)
 {
+    // Minimal Audio modification start #49
+    if (Process::isDesktopClosed ("FileChooser::showDialog " + title))
+    {
+        results.clear();
+        return false;
+    }
+    // Minimal Audio modification end #49
+
     detail::FocusRestorer focusRestorer;
 
     pimpl = createPimpl (flags, previewComp);
@@ -194,6 +202,15 @@ void FileChooser::launchAsync (int flags, std::function<void (const FileChooser&
 
     // you cannot run two file chooser dialog boxes at the same time
     jassert (asyncCallback == nullptr);
+
+    // Minimal Audio modification start #49
+    // No panel opens and the callback is never called: the chooser stays as a cancelled one leaves it.
+    if (Process::isDesktopClosed ("FileChooser::launchAsync " + title))
+    {
+        results.clear();
+        return;
+    }
+    // Minimal Audio modification end #49
 
     asyncCallback = std::move (callback);
 

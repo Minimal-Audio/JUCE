@@ -35,6 +35,17 @@
 namespace juce
 {
 
+// Minimal Audio modification start #49
+bool JUCE_CALLTYPE Process::isDesktopClosed (const String& inWhat)
+{
+    if (SystemStats::getEnvironmentVariable ("MKU_NO_DESKTOP", {}).isEmpty())
+        return false;
+
+    Logger::writeToLog ("MKU_NO_DESKTOP is set, so this was not opened: " + inWhat);
+    return true;
+}
+// Minimal Audio modification end #49
+
 String SystemStats::getJUCEVersion()
 {
     // Some basic tests, to keep an eye on things and make sure these types work ok

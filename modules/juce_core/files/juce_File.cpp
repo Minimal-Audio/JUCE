@@ -737,6 +737,11 @@ File File::withFileExtension (StringRef newExtension) const
 //==============================================================================
 bool File::startAsProcess (const String& parameters) const
 {
+    // Minimal Audio modification start #49
+    if (Process::isDesktopClosed ("File::startAsProcess " + fullPath))
+        return false;
+    // Minimal Audio modification end #49
+
     return exists() && Process::openDocument (fullPath, parameters);
 }
 

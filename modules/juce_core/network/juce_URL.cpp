@@ -1018,6 +1018,11 @@ bool URL::launchInDefaultBrowser() const
 {
     auto u = toString (true);
 
+    // Minimal Audio modification start #49
+    if (Process::isDesktopClosed ("URL::launchInDefaultBrowser " + u))
+        return false;
+    // Minimal Audio modification end #49
+
     if (u.containsChar ('@') && ! u.containsChar (':'))
         u = "mailto:" + u;
 

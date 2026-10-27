@@ -112,6 +112,14 @@ public:
     /** Tries to launch the OS's default reader application for a given file or URL. */
     static bool JUCE_CALLTYPE openDocument (const String& documentURL, const String& parameters);
 
+    // Minimal Audio modification start #49
+    /** True when the environment variable MKU_NO_DESKTOP is set, as a test runner sets it: nothing may leave the app
+        for the desktop, so a reveal, a launched document or link, a file chooser and a message box do nothing. Logs
+        what was asked, inWhat, when it is refused.
+    */
+    static bool JUCE_CALLTYPE isDesktopClosed (const String& inWhat);
+    // Minimal Audio modification end #49
+
     /** Tries to launch the OS's default email application to let the user create a message. */
     static bool JUCE_CALLTYPE openEmailWithAttachments (const String& targetEmailAddress,
                                                         const String& emailSubject,
