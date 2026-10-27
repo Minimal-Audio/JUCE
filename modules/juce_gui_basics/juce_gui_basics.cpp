@@ -68,6 +68,9 @@
 //==============================================================================
 #if JUCE_MAC
  #import <IOKit/pwr_mgt/IOPMLib.h>
+ // Minimal Audio modification start #48
+ #import <QuartzCore/CATransaction.h>
+ // Minimal Audio modification end #48
  #import <MetalKit/MetalKit.h>
 
  #if JUCE_MAC_API_VERSION_MIN_REQUIRED_AT_LEAST (14, 4)

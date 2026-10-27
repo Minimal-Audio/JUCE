@@ -176,9 +176,55 @@ private:
     }
 };
 
+// Minimal Audio modification start #48
+//==============================================================================
+struct JuceDrawnLayerCallback
+{
+    virtual ~JuceDrawnLayerCallback() = default;
+    virtual void drawLayer (CALayer*, CGContextRef) = 0;
+};
+
+// The delegate of the layer a peer owns and CoreAnimation draws: it draws through the peer and never animates.
+class JuceDrawnLayerDelegate final : public ObjCClass<NSObject<CALayerDelegate>>
+{
+public:
+    using Callback = JuceDrawnLayerCallback;
+
+    static NSObject<CALayerDelegate>* construct (Callback* owner)
+    {
+        static JuceDrawnLayerDelegate cls;
+        auto* result = cls.createInstance();
+        object_setInstanceVariable (result, "owner", owner);
+        return result;
+    }
+
+private:
+    JuceDrawnLayerDelegate()
+        : ObjCClass ("JuceDrawnLayerDelegate_")
+    {
+        addIvar<Callback*> ("owner");
+
+        addMethod (@selector (drawLayer:inContext:), [] (id self, SEL, CALayer* layer, CGContextRef context)
+        {
+            if (auto* owner = getIvar<Callback*> (self, "owner"))
+                owner->drawLayer (layer, context);
+        });
+
+        addMethod (@selector (actionForLayer:forKey:), [] (id, SEL, CALayer*, NSString*) -> id
+        {
+            return [NSNull null];
+        });
+
+        addProtocol (@protocol (CALayerDelegate));
+        registerClass();
+    }
+};
+
 //==============================================================================
 class NSViewComponentPeer final : public ComponentPeer,
-                                  private JuceCALayerDelegateCallback
+                                  private JuceCALayerDelegateCallback,
+                                  private JuceDrawnLayerCallback
+// Minimal Audio modification end #48
 {
 public:
     NSViewComponentPeer (Component& comp, const int windowStyleFlags, NSView* viewToAttachTo)
@@ -314,6 +360,14 @@ public:
 
         setOwner (view, nullptr);
 
+        // Minimal Audio modification start #48
+        if (drawnLayer != nullptr)
+        {
+            drawnLayer.get().delegate = nil;
+            [drawnLayer.get() removeFromSuperlayer];
+        }
+
+        // Minimal Audio modification end #48
         if ([view superview] != nil)
         {
             redirectWillMoveToWindow (nullptr);
@@ -1079,6 +1133,82 @@ public:
         }
     }
 
+    // Minimal Audio modification start #48
+    //==============================================================================
+    // How this peer's frames reach the screen (MacPeerDrawing). setMacPeerDrawing switches it at any time: leaving
+    // the CoreAnimation layer removes it, and the next frame draws the whole view.
+    void setDrawing (MacPeerDrawing newDrawing)
+    {
+        if (drawing == newDrawing)
+            return;
+
+        if (drawnLayer != nullptr)
+        {
+            drawnLayer.get().delegate = nil;
+            [drawnLayer.get() removeFromSuperlayer];
+            drawnLayer.reset();
+            drawnLayerDelegate.reset();
+        }
+
+        drawing = newDrawing;
+        [view setNeedsDisplay: YES];
+    }
+
+    // Only a CoreGraphics peer on a plain backing layer leaves drawRect:.
+    bool drawsCoreAnimationLayer() const
+    {
+       #if JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS
+        if (metalRenderer != nullptr)
+            return false;
+       #endif
+
+        return drawing == MacPeerDrawing::coreAnimationLayer && usingCoreGraphics && view.layer != nil;
+    }
+
+    // The CoreAnimation layer: a plain sublayer that CoreAnimation draws asynchronously, so AppKit's backing layer
+    // records no display list of ours. Made on first use, and sized and scaled to the view whenever it displays.
+    void updateDrawnLayer()
+    {
+        if (drawnLayer == nullptr)
+        {
+            drawnLayerDelegate.reset (JuceDrawnLayerDelegate::construct (this));
+            drawnLayer.reset ([[CALayer alloc] init]);
+            drawnLayer.get().delegate = drawnLayerDelegate.get();
+            drawnLayer.get().drawsAsynchronously = YES;
+            drawnLayer.get().needsDisplayOnBoundsChange = YES;
+            drawnLayer.get().anchorPoint = CGPointZero;
+            view.layer.contents = nil;
+            [view.layer addSublayer: drawnLayer.get()];
+        }
+
+        const auto scale = [view window] != nil ? [view window].backingScaleFactor : 1.0;
+        auto* layer = drawnLayer.get();
+
+        if (! CGRectEqualToRect (layer.frame, view.bounds) || ! approximatelyEqual (layer.contentsScale, scale))
+        {
+            [CATransaction begin];
+            [CATransaction setDisableActions: YES];
+            layer.frame = view.bounds;
+            layer.contentsScale = scale;
+            layer.opaque = component.isOpaque();
+            [CATransaction commit];
+            [layer setNeedsDisplay];
+        }
+    }
+
+    void drawLayer (CALayer* layer, CGContextRef context) override
+    {
+        // The view's flipped coordinates, as drawRect: has them.
+        if (! layer.contentsAreFlipped)
+        {
+            CGContextTranslateCTM (context, 0, layer.bounds.size.height);
+            CGContextScaleCTM (context, 1, -1);
+        }
+
+        drawRectWithContext (context, CGContextGetClipBoundingBox (context));
+    }
+
+    // Minimal Audio modification end #48
     void repaint (const Rectangle<int>& area) override
     {
         // In 10.11 changes were made to the way the OS handles repaint regions, and it seems that it can
@@ -1128,9 +1258,21 @@ public:
         // view of 300 cached images, 0.4 ms for one rect, 1.9 ms for two, 5.4 ms for five. One box
         // round rects far apart moves the cost to the raster, which then draws everything between
         // them. So neighbours are joined and a frame hands AppKit no more than a few rects.
-        for (auto& i : deferredRepaints.getCoveringRectangles (maxRectsPerFrame))
+        const auto rects = deferredRepaints.getCoveringRectangles (maxRectsPerFrame);
+
+        if (drawsCoreAnimationLayer())
+        {
+            updateDrawnLayer();
+
+            for (auto& i : rects)
+                [drawnLayer.get() setNeedsDisplayInRect: makeCGRect (i)];
+        }
+        else
+        {
+            for (auto& i : rects)
+                [view setNeedsDisplayInRect: makeCGRect (i)];
+        }
         // Minimal Audio modification end #48
-            [view setNeedsDisplayInRect: makeCGRect (i)];
 
         lastRepaintTime = Time::getMillisecondCounter();
 
@@ -1767,6 +1909,11 @@ public:
     Rectangle<float> lastSizeBeforeZoom;
     RectangleList<float> deferredRepaints;
     uint32 lastRepaintTime;
+    // Minimal Audio modification start #48
+    MacPeerDrawing drawing = MacPeerDrawing::appKit;
+    NSUniquePtr<CALayer> drawnLayer;
+    NSUniquePtr<NSObject<CALayerDelegate>> drawnLayerDelegate;
+    // Minimal Audio modification end #48
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
 
@@ -2289,6 +2436,22 @@ struct JuceNSViewClass final : public NSViewComponentPeerWrapper<ObjCClass<NSVie
             }
         });
 
+        // Minimal Audio modification start #48
+        // The CoreAnimation layer draws the frames: the view itself draws nothing.
+        addMethod (@selector (wantsUpdateLayer), [] (id self, SEL)
+        {
+            auto* owner = getOwner (self);
+            return owner != nullptr && owner->drawsCoreAnimationLayer();
+        });
+
+        addMethod (@selector (updateLayer), [] (id self, SEL)
+        {
+            if (auto* owner = getOwner (self))
+                if (owner->drawsCoreAnimationLayer())
+                    owner->updateDrawnLayer();
+        });
+
+        // Minimal Audio modification end #48
         addMethod (@selector (wantsDefaultClipping), [] (id, SEL) { return YES; }); // (this is the default, but may want to customise it in future)
 
         addMethod (@selector (worksWhenModal), [] (id self, SEL)
@@ -3047,6 +3210,14 @@ ComponentPeer* Component::createNewPeer (int styleFlags, void* windowToAttachTo)
     return new NSViewComponentPeer (*this, styleFlags, (NSView*) windowToAttachTo);
 }
 
+// Minimal Audio modification start #48
+void setMacPeerDrawing (ComponentPeer& peer, MacPeerDrawing drawing)
+{
+    if (auto* nsPeer = dynamic_cast<NSViewComponentPeer*> (&peer))
+        nsPeer->setDrawing (drawing);
+}
+
+// Minimal Audio modification end #48
 //==============================================================================
 const int KeyPress::spaceKey        = ' ';
 const int KeyPress::returnKey       = 0x0d;
