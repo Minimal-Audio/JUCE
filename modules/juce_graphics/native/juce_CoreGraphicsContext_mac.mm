@@ -143,8 +143,11 @@ public:
         if (cgim != nullptr)
             return cgim;
 
-        const Image::BitmapData srcData (juceImage, Image::BitmapData::readOnly);
+        return copyToCGImage (Image::BitmapData (juceImage, Image::BitmapData::readOnly), colourSpace);
+    }
 
+    static CFUniquePtr<CGImageRef> copyToCGImage (const Image::BitmapData& srcData, CGColorSpaceRef colourSpace)
+    {
         return createCGImage (srcData.data,
                               srcData.size,
                               (size_t) srcData.width,
@@ -152,7 +155,7 @@ public:
                               (size_t) srcData.pixelStride,
                               (size_t) srcData.lineStride,
                               colourSpace,
-                              getCGImageFlags (juceImage.getFormat()));
+                              getCGImageFlags (srcData.pixelFormat));
     }
 
     //==============================================================================
@@ -160,6 +163,11 @@ public:
 
     CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace)
     {
+        // The context's own image shares the context's pixels until either is written, so a
+        // picture is not copied each time it changes, only when it changes while still in use.
+        if (cachedImageRef == nullptr && CFEqual (colourSpace, CGBitmapContextGetColorSpace (context.get())))
+            cachedImageRef.reset (CGBitmapContextCreateImage (context.get()));
+
         if (cachedImageRef == nullptr)
         {
             cachedImageRef = createCGImage (data.getData(),
@@ -1158,6 +1166,11 @@ Image juce_loadWithCoreImage (InputStream& input)
 CGImageRef juce_createCoreGraphicsImage (const Image& juceImage, CGColorSpaceRef colourSpace)
 {
     return CoreGraphicsPixelData::getCachedImageRef (juceImage, colourSpace).release();
+}
+
+CFUniquePtr<CGImageRef> juce_copyToCoreGraphicsImage (const Image::BitmapData& srcData, CGColorSpaceRef colourSpace)
+{
+    return CoreGraphicsPixelData::copyToCGImage (srcData, colourSpace);
 }
 
 CGContextRef juce_getImageContext (const Image& image)

@@ -104,6 +104,7 @@ namespace
 }
 
 CGImageRef juce_createCoreGraphicsImage (const Image&, CGColorSpaceRef);
+CFUniquePtr<CGImageRef> juce_copyToCoreGraphicsImage (const Image::BitmapData&, CGColorSpaceRef);
 CGContextRef juce_getImageContext (const Image&);
 
 #if JUCE_IOS
