@@ -461,9 +461,10 @@ public:
     // Minimal Audio modification start #48
     /** Returns no more than maxNumRectangles rectangles that together cover this region.
 
-        Pairs whose bounding box covers nothing they do not are joined first. Then, while
-        too many remain, the pair whose bounding box adds the least area is joined. The
-        rectangles returned may overlap one another.
+        Pairs that overlap, and pairs whose bounding box covers nothing they do not, are
+        joined first. Then, while too many remain, the pair whose bounding box adds the
+        least area is joined. The rectangles returned never overlap one another, as the
+        list's own never do: a repaint handed two that overlap draws the overlap twice.
 
         This suits a repaint that costs something per rectangle as well as per pixel: a few
         boxes round neighbours, rather than one box round rectangles far apart.
@@ -480,13 +481,24 @@ public:
         {
             int bestA = 0, bestB = 1;
             auto leastAdded = std::numeric_limits<ValueType>::max();
+            bool overlapping = false;
 
-            for (int a = 0; a < result.size() - 1; ++a)
+            for (int a = 0; a < result.size() - 1 && ! overlapping; ++a)
             {
                 for (int b = a + 1; b < result.size(); ++b)
                 {
                     const auto& ra = result.getReference (a);
                     const auto& rb = result.getReference (b);
+
+                    // A box made by an earlier join can overlap a rectangle it did not hold.
+                    if (ra.intersects (rb))
+                    {
+                        overlapping = true;
+                        bestA = a;
+                        bestB = b;
+                        break;
+                    }
+
                     const auto added = areaOf (ra.getUnion (rb)) - areaOf (ra) - areaOf (rb);
 
                     if (added < leastAdded)
@@ -498,7 +510,7 @@ public:
                 }
             }
 
-            if (result.size() <= maxNumRectangles && leastAdded > 0)
+            if (! overlapping && result.size() <= maxNumRectangles && leastAdded > 0)
                 break;
 
             result.getReference (bestA) = result.getReference (bestA).getUnion (result.getReference (bestB));
