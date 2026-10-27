@@ -166,6 +166,12 @@ extern "C"
 
 #include "native/juce_EventTracing.h"
 #include "images/juce_ImagePixelDataNativeExtensions.h"
+// Minimal Audio modification start #48
+// CGImages and CGGradients kept until they change: juce_CoreGraphicsCaches_mac.h
+#if JUCE_MAC || JUCE_IOS
+ #include "native/juce_CoreGraphicsCaches_mac.h"
+#endif
+// Minimal Audio modification end #48
 
 #include "unicode/juce_UnicodeGenerated.cpp"
 #include "unicode/juce_UnicodeUtils.cpp"

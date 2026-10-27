@@ -160,6 +160,11 @@ public:
 
     CFUniquePtr<CGImageRef> getCGImage (CGColorSpaceRef colourSpace)
     {
+        // Minimal Audio modification start #48
+        // A snapshot sharing the context's pixels, in place of a copy: getSnapshotOfContext
+        if (cachedImageRef == nullptr)
+            cachedImageRef = getSnapshotOfContext (context.get(), colourSpace);
+        // Minimal Audio modification end #48
         if (cachedImageRef == nullptr)
         {
             cachedImageRef = createCGImage (data.getData(),

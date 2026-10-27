@@ -603,6 +603,13 @@ public:
             sendDataChangeMessage();
     }
 
+   // Minimal Audio modification start #48
+   // One CGImage of these pixels until they change: SoftwareImageCGImage
+   #if JUCE_MAC || JUCE_IOS
+    NativeExtensions getNativeExtensions() override { return cgImage.getNativeExtensions(); }
+   #endif
+   // Minimal Audio modification end #48
+
     Ptr clone() override
     {
         auto s = new SoftwarePixelData (pixelFormat, width, height, false);
@@ -615,6 +622,13 @@ public:
 private:
     HeapBlock<uint8> imageData;
     const int pixelStride, lineStride;
+
+   // Minimal Audio modification start #48
+   // Its owner: SoftwareImageCGImage, in juce_CoreGraphicsCaches_mac.h
+   #if JUCE_MAC || JUCE_IOS
+    SoftwareImageCGImage cgImage { *this };
+   #endif
+   // Minimal Audio modification end #48
 
     JUCE_LEAK_DETECTOR (SoftwarePixelData)
 };
