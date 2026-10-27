@@ -138,12 +138,12 @@ public:
     */
     static bool isValidIdentifier (const String& possibleIdentifier) noexcept;
 
-    //==================== MA Additions Start =======================================
+    // Minimal Audio modification start #20
     /** Creates an Identifier from a string that is already in the global string pool.
         This is an optimization that avoids the pool lookup. The string must already be pooled.
     */
     static Identifier getIdentifierFromInPoolString (const String& inPoolString);
-    //==================== MA Additions End =========================================
+    // Minimal Audio modification end #20
 
 private:
     String name;

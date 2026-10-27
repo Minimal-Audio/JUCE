@@ -378,6 +378,7 @@ private:
 class WebBrowserComponent::Impl
 {
 public:
+    // Minimal Audio modification start #25
     Impl (WebBrowserComponent& ownerIn, const Options& optionsInRaw)
         : owner (ownerIn),
           options ([&]
@@ -401,6 +402,7 @@ public:
                                      completion ({});
                                  })
                            : optionsInRaw;
+    // Minimal Audio modification end #25
 
                        makeFunctionsProviderIfNecessary (nativeFunctionsProvider, *this, optionsIn);
 
@@ -503,10 +505,12 @@ public:
         platform->focusGainedWithDirection (type, dir);
     }
 
+    // Minimal Audio modification start #25
     void setEditableFocusActive (bool active)
     {
         platform->setEditableFocusActive (active);
     }
+    // Minimal Audio modification end #25
 
     struct Platform;
 
@@ -529,12 +533,14 @@ private:
         virtual void focusGainedWithDirection (FocusChangeType, FocusChangeDirection) {}
         virtual void fallbackPaint (Graphics&) {}
 
+        // Minimal Audio modification start #25
         // Default no-op — platforms that support host keyboard pass-through
         // (macOS WKWebView, Windows WebView2) override this to flip the
         // routing of OS-level key events between the host responder chain
         // and the embedded DOM. See WebBrowserComponent::setEditableFocusActive
         // for the semantics.
         virtual void setEditableFocusActive (bool) {}
+        // Minimal Audio modification end #25
     };
 
     static void makeFunctionsProviderIfNecessary (std::optional<NativeFunctionsProvider>& provider,
@@ -756,10 +762,12 @@ void WebBrowserComponent::focusGainedWithDirection (FocusChangeType type,
     impl->focusGainedWithDirection (type, direction);
 }
 
+// Minimal Audio modification start #25
 void WebBrowserComponent::setEditableFocusActive (bool editableFocusActive)
 {
     impl->setEditableFocusActive (editableFocusActive);
 }
+// Minimal Audio modification end #25
 
 #endif
 

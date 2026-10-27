@@ -341,8 +341,8 @@ public:
         return this->currentValue;
     }
 
-    //============================================================================== MA ADDITION
 
+    // Minimal Audio modification start #4
     /**
      * Set the ramp length in seconds, without changing the current target value.
      * The current progress of the ramp will be preserved.
@@ -374,8 +374,8 @@ public:
         this->countdown = jlimit(0, stepsToTarget, (int)std::round(fractional_countdown * stepsToTarget));
         setStepSize();
     }
+    // Minimal Audio modification end #4
 
-    //============================================================================== (END OF MA ADDITIONS)
 
     //==============================================================================
     /** @cond */

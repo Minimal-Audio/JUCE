@@ -35,7 +35,9 @@
 namespace juce
 {
 
+// Minimal Audio modification start #9
 class Identifier;
+// Minimal Audio modification end #9
 
 //==============================================================================
 /**
@@ -88,7 +90,7 @@ public:
     /** Returns a shared global pool which is used for things like Identifiers, XML parsing. */
     static StringPool& getGlobalPool() noexcept;
 
-    //==================== MA Additions Start =======================================
+    // Minimal Audio modification start #9
     /** Add a set of sorted strings to the pool and return an array of Identifiers that can be used to access them.
         The input array must be sorted and contain no duplicates.
     */
@@ -105,7 +107,7 @@ public:
     /** Returns the underlying array of strings. */
     const Array<String>& getStrings() const noexcept { return strings; }
 #endif
-    //==================== MA Additions End =========================================
+    // Minimal Audio modification end #9
 
 private:
 
@@ -115,6 +117,7 @@ private:
 
     void garbageCollectIfNeeded();
 
+    // Minimal Audio modification start #9
     /**
      * Determine if the newString is in the pool and return the index of the string if it's the case.
      * Otherwise it returns false and gives the index at which the string should be inserted.
@@ -124,6 +127,7 @@ private:
      * @return Pair of bool and int. The bool is true if the string is in the pool, false otherwise. The int is the index at which the string should be inserted or the index of the string in the pool.
      */
     std::pair<bool, int> locateOrGetInsertIndex (const String& newString, int startIndex, int endIndex) const;
+    // Minimal Audio modification end #9
 
     JUCE_DECLARE_NON_COPYABLE (StringPool)
 };

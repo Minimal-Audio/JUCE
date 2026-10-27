@@ -517,6 +517,7 @@ public:
         jassert (! isClear);
     }
 
+    // Minimal Audio modification start #6
     /**
         Reserve a given number of channels to then use setDataToReferToNoAlloc as many times as needed with that
         number of channels.
@@ -610,6 +611,7 @@ public:
             size = newNumSamples;
         }
     }
+    // Minimal Audio modification end #6
 
     /** Makes this buffer point to a pre-allocated set of channel data arrays.
 

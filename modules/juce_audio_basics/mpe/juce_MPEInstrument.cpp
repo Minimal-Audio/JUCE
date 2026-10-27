@@ -371,8 +371,10 @@ void MPEInstrument::noteOn (int midiChannel,
         alreadyPlayingNote->keyState = MPENote::off;
         alreadyPlayingNote->noteOffVelocity = MPEValue::from7BitInt (64); // some reasonable number
 
+        // Minimal Audio modification start #4
         // This is commented out so that we can legato mods correctly between voices that share the same note.
         // listeners.call ([=] (Listener& l) { l.noteReleased (*alreadyPlayingNote); });
+        // Minimal Audio modification end #4
 
         notes.remove (alreadyPlayingNote);
     }

@@ -897,11 +897,13 @@ function(_juce_add_resources_rc source_target dest_target)
         set_source_files_properties(${resource_rc_file} PROPERTIES
             COMPILE_DEFINITIONS $<${has_custom_rc_include}:${compile_defs}>)
 
+        # Minimal Audio modification start #4
         ###################################################################################################################
         # Modified by minimal audio to fix standalone windows builds. The RC compiler does not support response files so
         # we put the resource file in it's own library with no additional includes to avoid the win cmd character limit
         set_target_properties(${source_target}_rc_lib PROPERTIES INCLUDE_DIRECTORIES "")
         ###################################################################################################################
+        # Minimal Audio modification end #4
 
     endif()
 

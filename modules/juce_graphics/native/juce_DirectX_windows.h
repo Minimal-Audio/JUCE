@@ -244,7 +244,7 @@ private:
     uint32 numRect = 0;
 };
 
-// Minimal Audio modification start
+// Minimal Audio modification start #36
 // Colour-only key for the gradient brush caches. The Direct2D renderer
 // re-applies gradient geometry (start/end point, centre/radius), transform and
 // opacity on every draw in SavedState::getBrush(), so the coordinates baked into
@@ -253,7 +253,7 @@ private:
 // forcing a CreateGradientStopCollection + CreateXGradientBrush every frame.
 // (position, native ARGB) per stop; std::vector/std::pair give lexicographic <.
 using GradientColourKey = std::vector<std::pair<double, uint32>>;
-// Minimal Audio modification end
+// Minimal Audio modification end #36
 
 class LinearGradientCache
 {
@@ -263,9 +263,10 @@ public:
                                                Direct2DMetrics* metrics);
 
 private:
-    // Minimal Audio modification start (colour-only key, see GradientColourKey)
+    // Minimal Audio modification start #36
+    // Colour-only key, see GradientColourKey.
     LruCache<GradientColourKey, ComSmartPtr<ID2D1LinearGradientBrush>> cache;
-    // Minimal Audio modification end
+    // Minimal Audio modification end #36
 };
 
 class RadialGradientCache
@@ -276,9 +277,10 @@ public:
                                                Direct2DMetrics* metrics);
 
 private:
-    // Minimal Audio modification start (colour-only key, see GradientColourKey)
+    // Minimal Audio modification start #36
+    // Colour-only key, see GradientColourKey.
     LruCache<GradientColourKey, ComSmartPtr<ID2D1RadialGradientBrush>> cache;
-    // Minimal Audio modification end
+    // Minimal Audio modification end #36
 };
 
 class RectangleListSpriteBatch
