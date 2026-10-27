@@ -52,7 +52,7 @@
   minimumCppStandard: 17
 
   dependencies:       juce_graphics juce_data_structures
-  OSXFrameworks:      Cocoa QuartzCore
+  OSXFrameworks:      Cocoa QuartzCore IOSurface
   WeakOSXFrameworks:  Metal MetalKit
   iOSFrameworks:      CoreServices UIKit
   WeakiOSFrameworks:  Metal MetalKit UniformTypeIdentifiers UserNotifications
