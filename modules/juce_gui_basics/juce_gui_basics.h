@@ -78,6 +78,15 @@
  #define JUCE_ENABLE_REPAINT_DEBUGGING 0
 #endif
 
+/** Config: JUCE_COREGRAPHICS_OWN_LAYER
+    On macOS, compiles the peer's other ways to draw (MacPeerDrawing): its own
+    IOSurfaces, the hybrid, and a CoreAnimation layer. setMacPeerDrawing picks one
+    per peer; a peer draws as JUCE does until it is told otherwise.
+*/
+#ifndef JUCE_COREGRAPHICS_OWN_LAYER
+ #define JUCE_COREGRAPHICS_OWN_LAYER 1
+#endif
+
 /** Config: JUCE_USE_XRANDR
     Enables Xrandr multi-monitor support (Linux only).
     Unless you specifically want to disable this, it's best to leave this option turned on.
