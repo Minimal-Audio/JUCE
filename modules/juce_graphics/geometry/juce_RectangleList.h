@@ -458,6 +458,57 @@ public:
         return { minX, minY, maxX - minX, maxY - minY };
     }
 
+    // Minimal Audio modification start #48
+    /** Returns no more than maxNumRectangles rectangles that together cover this region.
+
+        Pairs whose bounding box covers nothing they do not are joined first. Then, while
+        too many remain, the pair whose bounding box adds the least area is joined. The
+        rectangles returned may overlap one another.
+
+        This suits a repaint that costs something per rectangle as well as per pixel: a few
+        boxes round neighbours, rather than one box round rectangles far apart.
+    */
+    Array<RectangleType> getCoveringRectangles (int maxNumRectangles) const
+    {
+        jassert (maxNumRectangles > 0);
+
+        Array<RectangleType> result (rects);
+
+        const auto areaOf = [] (RectangleType r) { return r.getWidth() * r.getHeight(); };
+
+        while (result.size() > 1)
+        {
+            int bestA = 0, bestB = 1;
+            auto leastAdded = std::numeric_limits<ValueType>::max();
+
+            for (int a = 0; a < result.size() - 1; ++a)
+            {
+                for (int b = a + 1; b < result.size(); ++b)
+                {
+                    const auto& ra = result.getReference (a);
+                    const auto& rb = result.getReference (b);
+                    const auto added = areaOf (ra.getUnion (rb)) - areaOf (ra) - areaOf (rb);
+
+                    if (added < leastAdded)
+                    {
+                        leastAdded = added;
+                        bestA = a;
+                        bestB = b;
+                    }
+                }
+            }
+
+            if (result.size() <= maxNumRectangles && leastAdded > 0)
+                break;
+
+            result.getReference (bestA) = result.getReference (bestA).getUnion (result.getReference (bestB));
+            result.remove (bestB);
+        }
+
+        return result;
+    }
+
+    // Minimal Audio modification end #48
     /** Optimises the list into a minimum number of constituent rectangles.
 
         This will try to combine any adjacent rectangles into larger ones where

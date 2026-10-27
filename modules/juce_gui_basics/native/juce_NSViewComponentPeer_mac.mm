@@ -1110,6 +1110,9 @@ public:
                                                            : (std::numeric_limits<uint32>::max() - lastRepaintTime) + now;
 
         constexpr uint32 minimumRepaintInterval = 1000 / 30; // 30fps
+        // Minimal Audio modification start #48
+        constexpr int maxRectsPerFrame = 4;
+        // Minimal Audio modification end #48
 
         // When windows are being resized, artificially throttling high-frequency repaints helps
         // to stop the event queue getting clogged, and keeps everything working smoothly.
@@ -1120,7 +1123,13 @@ public:
         const auto frameSize = view.frame.size;
         const Rectangle currentBounds { (float) frameSize.width, (float) frameSize.height };
 
-        for (auto& i : deferredRepaints)
+        // Minimal Audio modification start #48
+        // AppKit's main-thread work grows with each rect it is handed in a frame: on a layer-backed
+        // view of 300 cached images, 0.4 ms for one rect, 1.9 ms for two, 5.4 ms for five. One box
+        // round rects far apart moves the cost to the raster, which then draws everything between
+        // them. So neighbours are joined and a frame hands AppKit no more than a few rects.
+        for (auto& i : deferredRepaints.getCoveringRectangles (maxRectsPerFrame))
+        // Minimal Audio modification end #48
             [view setNeedsDisplayInRect: makeCGRect (i)];
 
         lastRepaintTime = Time::getMillisecondCounter();
