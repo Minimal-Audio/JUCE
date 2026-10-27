@@ -220,6 +220,12 @@ private:
 };
 
 //==============================================================================
+class NSViewComponentLayer;
+
+// Depth of paints into a peer's window, its frame or a component layer: MacComponentLayer::isPaintingPeerFrame.
+static int peerFramePaintDepth = 0;
+
+//==============================================================================
 class NSViewComponentPeer final : public ComponentPeer,
                                   private JuceCALayerDelegateCallback,
                                   private JuceDrawnLayerCallback
@@ -357,6 +363,7 @@ public:
         scopedObservers.clear();
 
         setOwner (view, nullptr);
+        detachComponentLayers();
 
         if (drawnLayer != nullptr)
         {
@@ -1086,6 +1093,7 @@ public:
             const auto height = getComponent().getHeight();
             CGContextConcatCTM (cg, CGAffineTransformMake (1, 0, 0, -1, 0, height));
             CoreGraphicsContext context (cg, (float) height);
+            const ScopedValueSetter framePaint { peerFramePaintDepth, peerFramePaintDepth + 1 };
             handlePaint (context);
         }
         else
@@ -1221,6 +1229,7 @@ public:
     void onVBlank (double timestampSec)
     {
         callVBlankListeners (timestampSec);
+        flushComponentLayers();
         setNeedsDisplayRectangles();
     }
 
@@ -1902,6 +1911,14 @@ public:
     MacPeerDrawing drawing = MacPeerDrawing::appKit;
     NSUniquePtr<CALayer> drawnLayer;
     NSUniquePtr<NSObject<CALayerDelegate>> drawnLayerDelegate;
+
+    // The component layers in this window, in the tree's paint order once ordered (MacComponentLayer).
+    Array<NSViewComponentLayer*> componentLayers;
+    bool componentLayersOrdered = true;
+
+    void flushComponentLayers();
+    void detachComponentLayers();
+    bool hasDrawingLayerFor (const Component&) const;
 
     std::optional<KeyEventAttributes> lastSeenKeyEvent;
 
@@ -3191,6 +3208,330 @@ void Desktop::setKioskComponent (Component* kioskComp, bool shouldBeEnabled, boo
 void Desktop::allowedOrientationsChanged() {}
 
 //==============================================================================
+//==============================================================================
+// MacComponentLayer: a sublayer of the peer's view, over its frame, that draws one component.
+class NSViewComponentLayer final : public MacComponentLayer,
+                                   private JuceDrawnLayerCallback
+{
+public:
+    NSViewComponentLayer (NSViewComponentPeer& p, Component& c, std::function<void (Graphics&)> paintIn)
+        : peer (&p), component (c), paint (std::move (paintIn))
+    {
+        delegate.reset (JuceDrawnLayerDelegate::construct (this));
+        layer.reset ([[CALayer alloc] init]);
+        layer.get().delegate = delegate.get();
+        layer.get().drawsAsynchronously = YES;
+        layer.get().anchorPoint = CGPointZero;
+        layer.get().hidden = YES;
+        [peer->view.layer addSublayer: layer.get()];
+
+        peer->componentLayers.add (this);
+        peer->componentLayersOrdered = false;
+    }
+
+    // The owner repaints the component if it should show in its parent again: it may be going too.
+    ~NSViewComponentLayer() override
+    {
+        detach();
+    }
+
+    void repaint (Rectangle<int> area) override
+    {
+        pending.add (area.getIntersection (component.getLocalBounds()));
+    }
+
+    void setFrameInterval (int vblanks) override { frameInterval = jmax (1, vblanks); }
+    bool isDrawing() const override             { return drawing; }
+    const Component* getCoveredBy() const override { return coveredBy.get(); }
+
+    const Component& getComponent() const       { return component; }
+    void setZ (int z)                           { layer.get().zPosition = (CGFloat) z; }
+
+    // Where the component shows now, or nothing while the window must paint it itself.
+    void flush()
+    {
+        const auto placement = findPlacement();
+        const auto nowDrawing = placement.has_value();
+
+        if (nowDrawing)
+            place (*placement);
+
+        if (nowDrawing != drawing)
+        {
+            drawing = nowDrawing;
+            layer.get().hidden = ! drawing;
+            pending.clear();
+
+            if (drawing)
+            {
+                [layer.get() setNeedsDisplay];
+
+                // The parent paints round it from now on.
+                if (auto* parent = component.getParentComponent())
+                    parent->repaint (component.getBoundsInParent());
+            }
+            else
+            {
+                // Back in the parent's paint.
+                component.repaint();
+            }
+
+            return;
+        }
+
+        // Counted on every vblank, so a repaint after a still stretch draws at once.
+        ++framesSinceDrawn;
+
+        if (! drawing || pending.isEmpty() || framesSinceDrawn < frameInterval)
+            return;
+
+        framesSinceDrawn = 0;
+
+        const auto height = (float) layer.get().bounds.size.height;
+        const auto flipped = layer.get().contentsAreFlipped;
+
+        for (auto r : pending.getCoveringRectangles (4))
+        {
+            auto inLayer = r.toFloat().transformedBy (toLayer).getSmallestIntegerContainer().toFloat();
+
+            if (! flipped)
+                inLayer.setY (height - inLayer.getBottom());
+
+            [layer.get() setNeedsDisplayInRect: makeCGRect (inLayer)];
+        }
+
+        pending.clear();
+    }
+
+    void detach()
+    {
+        if (peer == nullptr)
+            return;
+
+        peer->componentLayers.removeFirstMatchingValue (this);
+        layer.get().delegate = nil;
+        [layer.get() removeFromSuperlayer];
+        peer = nullptr;
+        drawing = false;
+    }
+
+private:
+    struct Placement
+    {
+        CGRect frame;
+        AffineTransform toLayer;
+        CGFloat scale;
+    };
+
+    // Mirrors Component::paintComponentAndChildren: an ancestor clips the component only where it does not paint
+    // unclipped, and anything later in the tree that overlaps it paints over it.
+    std::optional<Placement> findPlacement()
+    {
+        coveredBy = nullptr;
+
+        if (peer == nullptr || component.getPeer() != peer || ! component.isShowing())
+            return {};
+
+        if (component.isTransformed() || component.getComponentEffect() != nullptr)
+            return {};
+
+        auto& top = peer->getComponent();
+        auto visible = component.getLocalBounds();
+
+        for (const Component* node = &component; node != &top;)
+        {
+            auto* parent = node->getParentComponent();
+
+            if (parent == nullptr)
+                return {};
+
+            if (parent != &top && (parent->isTransformed() || parent->getComponentEffect() != nullptr || parent->getAlpha() < 1.0f))
+                return {};
+
+            visible += node->getPosition();
+
+            if (! parent->isPaintingUnclipped() || parent == &top)
+                visible = visible.getIntersection (parent->getLocalBounds());
+
+            if (visible.isEmpty())
+                return {};
+
+            for (int i = parent->getIndexOfChildComponent (node) + 1; i < parent->getNumChildComponents(); ++i)
+            {
+                auto* later = parent->getChildComponent (i);
+
+                if (later->isVisible() && later->getBounds().intersects (visible) && ! peer->hasDrawingLayerFor (*later))
+                {
+                    coveredBy = later;
+                    return {};
+                }
+            }
+
+            node = parent;
+        }
+
+        // As ComponentPeer::handlePaint scales the top component to the peer.
+        auto toPeer = top.isTransformed() ? top.getTransform() : AffineTransform();
+        const auto peerBounds = peer->getBounds();
+        auto topBounds = top.getLocalBounds();
+
+        if (top.isTransformed())
+            topBounds = topBounds.transformedBy (top.getTransform());
+
+        if (! topBounds.isEmpty() && (peerBounds.getWidth() != topBounds.getWidth() || peerBounds.getHeight() != topBounds.getHeight()))
+            toPeer = toPeer.scaled ((float) peerBounds.getWidth() / (float) topBounds.getWidth(),
+                                    (float) peerBounds.getHeight() / (float) topBounds.getHeight());
+
+        const auto scale = [peer->view window] != nil ? [peer->view window].backingScaleFactor : 1.0;
+
+        // On whole device pixels, so CoreAnimation composites it without resampling.
+        const auto inPeer = visible.toFloat().transformedBy (toPeer);
+        const auto device = (inPeer * (float) scale).getSmallestIntegerContainer().toFloat() / (float) scale;
+
+        const auto origin = top.getLocalPoint (&component, Point<int>()).toFloat();
+        const auto componentToLayer = AffineTransform::translation (origin).followedBy (toPeer).translated (-device.getX(), -device.getY());
+
+        auto frame = makeCGRect (device);
+
+        // The view is flipped; its layer's sublayers are placed from the top only where its geometry is too.
+        if (! peer->view.layer.contentsAreFlipped)
+            frame.origin.y = peer->view.bounds.size.height - CGRectGetMaxY (frame);
+
+        return Placement { frame, componentToLayer, scale };
+    }
+
+    void place (const Placement& p)
+    {
+        auto* l = layer.get();
+
+        if (! CGRectEqualToRect (l.frame, p.frame) || ! approximatelyEqual (l.contentsScale, p.scale) || toLayer != p.toLayer)
+        {
+            [CATransaction begin];
+            [CATransaction setDisableActions: YES];
+            l.frame = p.frame;
+            l.contentsScale = p.scale;
+            l.opaque = component.isOpaque();
+            [CATransaction commit];
+
+            toLayer = p.toLayer;
+            [l setNeedsDisplay];
+            pending.clear();
+        }
+    }
+
+    void drawLayer (CALayer* l, CGContextRef context) override
+    {
+        const auto height = (float) l.bounds.size.height;
+
+        if (! l.contentsAreFlipped)
+        {
+            CGContextTranslateCTM (context, 0, height);
+            CGContextScaleCTM (context, 1, -1);
+        }
+
+        if (! component.isOpaque())
+            CGContextClearRect (context, CGContextGetClipBoundingBox (context));
+
+        CGContextConcatCTM (context, CGAffineTransformMake (1, 0, 0, -1, 0, height));
+        CoreGraphicsContext cg (context, height);
+        const ScopedValueSetter framePaint { peerFramePaintDepth, peerFramePaintDepth + 1 };
+
+        Graphics g (cg);
+        g.addTransform (toLayer);
+        g.reduceClipRegion (component.getLocalBounds());
+        paint (g);
+    }
+
+    NSViewComponentPeer* peer;
+    Component& component;
+    std::function<void (Graphics&)> paint;
+    NSUniquePtr<NSObject<CALayerDelegate>> delegate;
+    NSUniquePtr<CALayer> layer;
+    RectangleList<int> pending;
+    AffineTransform toLayer;
+    WeakReference<Component> coveredBy;
+    int frameInterval = 1;
+    int framesSinceDrawn = 0;
+    bool drawing = false;
+};
+
+bool MacComponentLayer::isPaintingPeerFrame()
+{
+    return peerFramePaintDepth > 0;
+}
+
+// Whether a paints before b in the tree: an ancestor before its descendants, siblings by index.
+static bool paintsBefore (const Component& a, const Component& b)
+{
+    Array<const Component*> chainA, chainB;
+
+    for (auto* c = &a; c != nullptr; c = c->getParentComponent())
+        chainA.insert (0, c);
+
+    for (auto* c = &b; c != nullptr; c = c->getParentComponent())
+        chainB.insert (0, c);
+
+    for (int i = 0; i < jmin (chainA.size(), chainB.size()); ++i)
+    {
+        if (chainA[i] == chainB[i])
+            continue;
+
+        if (i == 0)
+            return false;
+
+        auto* parent = chainA[i - 1];
+        return parent->getIndexOfChildComponent (chainA[i]) < parent->getIndexOfChildComponent (chainB[i]);
+    }
+
+    return chainA.size() < chainB.size();
+}
+
+void NSViewComponentPeer::flushComponentLayers()
+{
+    if (! componentLayersOrdered)
+    {
+        std::sort (componentLayers.begin(), componentLayers.end(), [] (auto* x, auto* y)
+        {
+            return paintsBefore (x->getComponent(), y->getComponent());
+        });
+
+        // Over the peer's own frame, in paint order.
+        int z = 1;
+
+        for (auto* l : componentLayers)
+            l->setZ (z++);
+
+        componentLayersOrdered = true;
+    }
+
+    for (auto* l : Array<NSViewComponentLayer*> (componentLayers))
+        l->flush();
+}
+
+void NSViewComponentPeer::detachComponentLayers()
+{
+    for (auto* l : Array<NSViewComponentLayer*> (componentLayers))
+        l->detach();
+}
+
+bool NSViewComponentPeer::hasDrawingLayerFor (const Component& c) const
+{
+    for (auto* l : componentLayers)
+        if (&l->getComponent() == &c)
+            return l->isDrawing();
+
+    return false;
+}
+
+std::unique_ptr<MacComponentLayer> createMacComponentLayer (Component& component, std::function<void (Graphics&)> paint)
+{
+    if (auto* peer = dynamic_cast<NSViewComponentPeer*> (component.getPeer()))
+        if (peer->view.layer != nil)
+            return std::make_unique<NSViewComponentLayer> (*peer, component, std::move (paint));
+
+    return {};
+}
+
 ComponentPeer* Component::createNewPeer (int styleFlags, void* windowToAttachTo)
 {
     return new NSViewComponentPeer (*this, styleFlags, (NSView*) windowToAttachTo);

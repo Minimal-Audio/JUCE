@@ -750,6 +750,54 @@ enum class MacPeerDrawing
 
 /** Sets how a Mac peer draws, at any time: the next frame draws the whole view the new way. */
 JUCE_API void setMacPeerDrawing (ComponentPeer& peer, MacPeerDrawing drawing);
+
+//==============================================================================
+/** A CoreAnimation layer of a Mac peer's own for one component of its window, so the
+    component redraws without its parents. Minimal Audio's, not upstream JUCE.
+
+    The layer sits over the peer's frame where the component shows, clipped as its
+    parents clip it, in the tree's paint order. paint draws the component at its own
+    origin when repaint asks; the peer places the layer and draws it on each vblank.
+
+    The layer draws the component only while nothing the window paints later covers it
+    and no ancestor is transformed, has an effect or is below full alpha. While it
+    draws, the component's own cache should paint nothing in the peer's frame
+    (isPaintingPeerFrame), and its repaints should go to the layer instead of its
+    parents. When drawing starts or stops, the layer repaints the parent or the
+    component, so the frame changes hands in one vblank.
+
+    @see createMacComponentLayer
+*/
+class JUCE_API MacComponentLayer
+{
+public:
+    virtual ~MacComponentLayer() = default;
+
+    /** Redraws an area of the component, in its own coordinates, on the next vblank. */
+    virtual void repaint (Rectangle<int> area) = 0;
+
+    /** Draws the repaints asked for on every nth vblank only: a display that needs no more
+        than 30 frames a second on a 120 Hz screen draws on every 4th. The layer is still
+        placed on every vblank.
+    */
+    virtual void setFrameInterval (int vblanks) = 0;
+
+    /** Whether the layer draws the component now. */
+    virtual bool isDrawing() const = 0;
+
+    /** The component the layer stood aside for when it last stopped drawing, or null. */
+    virtual const Component* getCoveredBy() const = 0;
+
+    /** Whether a paint now draws into a peer's window: its frame or a component layer. */
+    static bool isPaintingPeerFrame();
+};
+
+/** A layer for the component in its current peer, or null where the peer is not a Mac view.
+    It lives as long as the result does, or until the peer goes. Its owner repaints the
+    component when it lets go of a drawing layer and the component stays.
+*/
+JUCE_API std::unique_ptr<MacComponentLayer> createMacComponentLayer (Component& component,
+                                                                    std::function<void (Graphics&)> paint);
 #endif
 
 } // namespace juce
