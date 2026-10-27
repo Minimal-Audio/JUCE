@@ -1120,8 +1120,11 @@ public:
         const auto frameSize = view.frame.size;
         const Rectangle currentBounds { (float) frameSize.width, (float) frameSize.height };
 
-        for (auto& i : deferredRepaints)
+        // Minimal Audio modification start #48
+        // At most four rects, none overlapping: getCoveringRectangles
+        for (auto& i : getCoveringRectangles (deferredRepaints, 4))
             [view setNeedsDisplayInRect: makeCGRect (i)];
+        // Minimal Audio modification end #48
 
         lastRepaintTime = Time::getMillisecondCounter();
 

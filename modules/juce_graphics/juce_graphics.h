@@ -119,6 +119,10 @@ namespace juce
 #include "placement/juce_Justification.h"
 #include "geometry/juce_Path.h"
 #include "geometry/juce_RectangleList.h"
+// Minimal Audio modification start #48
+// A frame's repaint rects merged to a few: juce_CoveringRectangles.h
+#include "geometry/juce_CoveringRectangles.h"
+// Minimal Audio modification end #48
 #include "colour/juce_PixelFormats.h"
 #include "colour/juce_Colour.h"
 #include "colour/juce_ColourGradient.h"
