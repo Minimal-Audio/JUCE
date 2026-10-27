@@ -1126,8 +1126,9 @@ public:
         const Rectangle currentBounds { (float) frameSize.width, (float) frameSize.height };
 
         // Minimal Audio modification start #48
-        // Each rect to the CoreAnimation layer when the peer draws through it, else to the view: CoreAnimationLayer
-        for (auto& i : deferredRepaints)
+        // At most four rects, none overlapping, each to the CoreAnimation layer when the peer draws through it, else to
+        // the view: getCoveringRectangles, CoreAnimationLayer
+        for (auto& i : getCoveringRectangles (deferredRepaints, 4))
             coreAnimationLayer.setNeedsDisplayInRect (view, makeCGRect (i));
         // Minimal Audio modification end #48
 
