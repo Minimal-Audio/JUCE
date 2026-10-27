@@ -580,28 +580,13 @@ void CoreGraphicsContext::setFill (const FillType& fillType)
 
     if (fillType.isColour())
     {
-        // Minimal Audio modification start #44
-        // A frame sets a few colours hundreds of times, and every cached picture's blit sets one, so each
-        // used to allocate a CGColor and free it (~380 ns). Kept per thread by ARGB in the context's sRGB space.
-        thread_local std::unordered_map<uint32, detail::ColorPtr> colours;
+        const CGFloat components[] { fillType.colour.getFloatRed(),
+                                     fillType.colour.getFloatGreen(),
+                                     fillType.colour.getFloatBlue(),
+                                     fillType.colour.getFloatAlpha() };
 
-        if (colours.size() > 512)
-            colours.clear();
-
-        auto& color = colours[fillType.colour.getARGB()];
-
-        if (color == nullptr)
-        {
-            const CGFloat components[] { fillType.colour.getFloatRed(),
-                                         fillType.colour.getFloatGreen(),
-                                         fillType.colour.getFloatBlue(),
-                                         fillType.colour.getFloatAlpha() };
-
-            color = detail::ColorPtr { CGColorCreate (rgbColourSpace.get(), components) };
-        }
-
+        const detail::ColorPtr color { CGColorCreate (rgbColourSpace.get(), components) };
         CGContextSetFillColorWithColor (context.get(), color.get());
-        // Minimal Audio modification end #44
         CGContextSetStrokeColorWithColor (context.get(), color.get());
         CGContextSetAlpha (context.get(), 1.0f);
     }

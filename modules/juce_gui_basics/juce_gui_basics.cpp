@@ -166,6 +166,10 @@
 #if JUCE_MAC || JUCE_IOS
  #include "native/accessibility/juce_AccessibilitySharedCode_mac.mm"
  #include "native/juce_CGMetalLayerRenderer_mac.h"
+ // Minimal Audio modification start #48
+ // The layer CoreAnimation draws a peer through: juce_CoreAnimationLayer_mac.h
+ #include "native/juce_CoreAnimationLayer_mac.h"
+ // Minimal Audio modification end #48
 
  #if JUCE_IOS
   #include "native/juce_UIViewComponentPeer_ios.mm"
