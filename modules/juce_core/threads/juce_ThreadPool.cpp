@@ -135,8 +135,15 @@ ThreadPool::~ThreadPool()
 
 void ThreadPool::stopThreads()
 {
+    // Minimal Audio modification start #50
+    // Each thread is woken as it is told to exit, so they all leave at once. Without the notify each one sleeps in
+    // wait (500) until its own stopThread wakes it, and the pool stops one thread after another.
     for (auto* t : threads)
+    {
         t->signalThreadShouldExit();
+        t->notify();
+    }
+    // Minimal Audio modification end #50
 
     for (auto* t : threads)
         t->stopThread (500);
