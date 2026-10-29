@@ -62,6 +62,17 @@ struct LinuxEventLoopInternal
     static void invokeEventLoopCallbackForFd (int);
     /** @internal */
     static std::vector<int> getRegisteredFds();
+
+    // Minimal Audio modification start #55
+    /** @internal
+
+        Sets a check the loop makes before it sleeps on a registered fd: true when the fd's owner already holds input
+        it read off the fd at some other time, as Xlib queues events it reads while waiting for a reply. The fd then
+        counts as readable and its callback runs, where a poll() of the fd would sleep until the next byte arrived.
+        An empty check removes it; unregistering the fd removes it too.
+    */
+    static void setPendingCheck (int fd, std::function<bool()> hasPending);
+    // Minimal Audio modification end #55
 };
 
 } // namespace juce
