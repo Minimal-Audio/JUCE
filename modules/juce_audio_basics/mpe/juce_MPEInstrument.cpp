@@ -50,6 +50,10 @@ namespace
 //==============================================================================
 MPEInstrument::MPEInstrument() noexcept
 {
+    // Minimal Audio modification start #TBD
+    notes.ensureStorageAllocated (reservedNotes);
+    // Minimal Audio modification end #TBD
+
     mpeInstrumentFill (lastPressureLowerBitReceivedOnChannel, noLSBValueReceived);
     mpeInstrumentFill (lastTimbreLowerBitReceivedOnChannel, noLSBValueReceived);
     mpeInstrumentFill (isMemberChannelSustained, false);
@@ -867,7 +871,9 @@ void MPEInstrument::releaseAllNotes()
         listeners.call ([&] (Listener& l) { l.noteReleased (note); });
     }
 
-    notes.clear();
+    // Minimal Audio modification start #TBD
+    notes.clearQuick();
+    // Minimal Audio modification end #TBD
 }
 
 //==============================================================================
