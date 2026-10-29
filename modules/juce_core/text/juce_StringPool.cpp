@@ -283,7 +283,7 @@ Array<Identifier> StringPool::addSortedStrings (const Array<String>& stringsToAd
     return result;
 }
 
-#if JUCE_DEBUG
+#if JUCE_DEBUG || JUCE_LOG_ASSERTIONS
 bool StringPool::isStringInPool (const String& str) const noexcept
 {
     const ScopedLock sl (lock);

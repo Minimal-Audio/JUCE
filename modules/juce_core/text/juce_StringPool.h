@@ -96,7 +96,7 @@ public:
     */
     Array<Identifier> addSortedStrings (const Array<String>& stringsToAdd);
 
-#if JUCE_DEBUG
+#if JUCE_DEBUG || JUCE_LOG_ASSERTIONS
     /** Check if a string is **in** the pool by comparing character pointers (debug only, no side effects).
         It does not check if an equivalent string is in the pool, only if **this** instance of the string is in the pool.
     */
