@@ -63,7 +63,7 @@ struct LinuxEventLoopInternal
     /** @internal */
     static std::vector<int> getRegisteredFds();
 
-    // Minimal Audio modification start #TBD
+    // Minimal Audio modification start #55
     /** @internal
 
         Sets a check the loop makes before it sleeps on a registered fd: true when the fd's owner already holds input
@@ -72,7 +72,7 @@ struct LinuxEventLoopInternal
         An empty check removes it; unregistering the fd removes it too.
     */
     static void setPendingCheck (int fd, std::function<bool()> hasPending);
-    // Minimal Audio modification end #TBD
+    // Minimal Audio modification end #55
 };
 
 } // namespace juce

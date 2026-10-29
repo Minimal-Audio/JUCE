@@ -3320,7 +3320,7 @@ bool XWindowSystem::initialiseXDisplay()
                                             } while (display != nullptr);
                                         });
 
-    // Minimal Audio modification start #TBD
+    // Minimal Audio modification start #55
     // An Xlib call that waits for a reply (XQueryPointer, XGetWindowAttributes) reads the events that arrive meanwhile
     // into Xlib's queue, and the connection then stays quiet: a close or a press waited there for the next X event.
     // The loop asks the queue before it sleeps; QueuedAlready reads nothing from the connection.
@@ -3331,7 +3331,7 @@ bool XWindowSystem::initialiseXDisplay()
                                                  return display != nullptr
                                                      && X11Symbols::getInstance()->xEventsQueued (display, QueuedAlready) > 0;
                                              });
-    // Minimal Audio modification end #TBD
+    // Minimal Audio modification end #55
 
     return true;
 }
