@@ -373,12 +373,13 @@ protected:
 
 private:
     //==============================================================================
-    // Minimal Audio modification start #53
+    // Minimal Audio modification start #53 #TBD
     // Room for a note on every MIDI note number, made when the instrument is built and kept, so a note-on, a note-off
-    // or an all-notes-off on the audio thread never allocates or frees.
+    // or an all-notes-off on the audio thread never allocates or frees. ensureStorageAllocated rounds the reserve up
+    // by half again, and a removal shrinks storage above the minimum, so the minimum is twice the reserve.
     static constexpr int reservedNotes = 128;
-    Array<MPENote, DummyCriticalSection, reservedNotes> notes;
-    // Minimal Audio modification end #53
+    Array<MPENote, DummyCriticalSection, reservedNotes * 2> notes;
+    // Minimal Audio modification end #53 #TBD
     MPEZoneLayout zoneLayout;
     ListenerList<Listener> listeners;
 
