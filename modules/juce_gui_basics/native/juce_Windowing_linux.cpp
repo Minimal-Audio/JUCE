@@ -829,11 +829,11 @@ public:
     {
         const auto cursor = handle != nullptr ? handle->cursorHandle : Cursor{};
 
-        // Minimal Audio modification start #TBD
+        // Minimal Audio modification start #52
         // A peer with no native window, such as a test's headless one, has no cursor to show.
         if (peer != nullptr && peer->getNativeHandle() != nullptr)
             XWindowSystem::getInstance()->showCursor ((::Window) peer->getNativeHandle(), cursor);
-        // Minimal Audio modification end #TBD
+        // Minimal Audio modification end #52
     }
 
 private:
