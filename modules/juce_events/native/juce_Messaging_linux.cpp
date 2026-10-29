@@ -166,6 +166,9 @@ public:
             const ScopedLock sl (lock);
 
             callbacks.erase (fd);
+            // Minimal Audio modification start #TBD
+            pendingChecks.erase (fd);
+            // Minimal Audio modification end #TBD
 
             const auto iter = getPollfd (fd);
 
@@ -209,8 +212,44 @@ public:
     bool sleepUntilNextEvent (int timeoutMs)
     {
         const ScopedLock sl (lock);
+
+        // Minimal Audio modification start #TBD
+        // Input an fd's owner already holds would wait in poll() until the fd next became readable: a window's close
+        // sat 15 s in Xlib's queue. Such an fd counts as readable now, and the loop does not sleep.
+        bool pending = false;
+
+        for (const auto& [fd, hasPending] : pendingChecks)
+        {
+            if (! hasPending())
+                continue;
+
+            const auto iter = getPollfd (fd);
+
+            if (iter != pfds.end() && iter->fd == fd)
+            {
+                iter->revents |= POLLIN;
+                pending = true;
+            }
+        }
+
+        if (pending)
+            return true;
+        // Minimal Audio modification end #TBD
+
         return poll (pfds.data(), static_cast<nfds_t> (pfds.size()), timeoutMs) != 0;
     }
+
+    // Minimal Audio modification start #TBD
+    void setPendingCheck (int fd, std::function<bool()> hasPending)
+    {
+        const ScopedLock sl (lock);
+
+        if (hasPending)
+            pendingChecks[fd] = std::move (hasPending);
+        else
+            pendingChecks.erase (fd);
+    }
+    // Minimal Audio modification end #TBD
 
     std::vector<int> getRegisteredFds()
     {
@@ -274,6 +313,9 @@ private:
     CriticalSection lock;
 
     std::map<int, SharedCallback> callbacks;
+    // Minimal Audio modification start #TBD
+    std::map<int, std::function<bool()>> pendingChecks;
+    // Minimal Audio modification end #TBD
     std::vector<SharedCallback> callbackStorage;
     std::vector<pollfd> pfds;
 
@@ -392,6 +434,14 @@ void LinuxEventLoopInternal::invokeEventLoopCallbackForFd (int fd)
     if (auto* runLoop = InternalRunLoop::getInstanceWithoutCreating())
         runLoop->dispatchEvent (fd);
 }
+
+// Minimal Audio modification start #TBD
+void LinuxEventLoopInternal::setPendingCheck (int fd, std::function<bool()> hasPending)
+{
+    if (auto* runLoop = InternalRunLoop::getInstanceWithoutCreating())
+        runLoop->setPendingCheck (fd, std::move (hasPending));
+}
+// Minimal Audio modification end #TBD
 
 std::vector<int> LinuxEventLoopInternal::getRegisteredFds()
 {
