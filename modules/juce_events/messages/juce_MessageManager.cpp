@@ -188,7 +188,7 @@ void MessageManager::deregisterBroadcastListener (ActionListener* const listener
 }
 
 //==============================================================================
-// Minimal Audio modification start #TBD
+// Minimal Audio modification start #58
 // The message thread's id is an atomic, so isThisTheMessageThread() takes no lock and an
 // audio thread may call it. This backports upstream JUCE a860deed61 (2026-10-02), first released in
 // JUCE 9.0.4. This fork is on 8.0.16.
@@ -229,7 +229,7 @@ bool MessageManager::currentThreadHasLockedMessageManager() const noexcept
     auto thisThread = Thread::getCurrentThreadId();
     return thisThread == messageThreadId.load (std::memory_order_acquire) || thisThread == threadWithLock.get();
 }
-// Minimal Audio modification end #TBD
+// Minimal Audio modification end #58
 
 bool MessageManager::existsAndIsLockedByCurrentThread() noexcept
 {

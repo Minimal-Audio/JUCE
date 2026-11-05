@@ -203,9 +203,9 @@ public:
         (Best to ignore this method unless you really know what you're doing.)
         @see setCurrentThreadAsMessageThread
     */
-    // Minimal Audio modification start #TBD
+    // Minimal Audio modification start #58
     Thread::ThreadID getCurrentMessageThread() const noexcept            { return messageThreadId.load (std::memory_order_acquire); }
-    // Minimal Audio modification end #TBD
+    // Minimal Audio modification end #58
 
     /** Returns true if the caller thread has currently got the message manager locked.
 
@@ -410,11 +410,11 @@ private:
 
     std::unique_ptr<ActionBroadcaster> broadcaster;
     Atomic<int> quitMessagePosted { 0 }, quitMessageReceived { 0 };
-    // Minimal Audio modification start #TBD
+    // Minimal Audio modification start #58
     std::atomic<Thread::ThreadID> messageThreadId{};
     Atomic<Thread::ThreadID> threadWithLock{};
     std::mutex messageThreadIdMutex;
-    // Minimal Audio modification end #TBD
+    // Minimal Audio modification end #58
 
     template <typename Function>
     static auto transformResult (Function&& f)
