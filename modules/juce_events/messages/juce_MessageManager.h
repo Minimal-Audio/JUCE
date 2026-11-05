@@ -411,8 +411,8 @@ private:
     std::unique_ptr<ActionBroadcaster> broadcaster;
     Atomic<int> quitMessagePosted { 0 }, quitMessageReceived { 0 };
     // Minimal Audio modification start #TBD
-    std::atomic<Thread::ThreadID> messageThreadId;
-    Atomic<Thread::ThreadID> threadWithLock;
+    std::atomic<Thread::ThreadID> messageThreadId{};
+    Atomic<Thread::ThreadID> threadWithLock{};
     std::mutex messageThreadIdMutex;
     // Minimal Audio modification end #TBD
 

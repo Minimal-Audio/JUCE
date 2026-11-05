@@ -190,7 +190,8 @@ void MessageManager::deregisterBroadcastListener (ActionListener* const listener
 //==============================================================================
 // Minimal Audio modification start #TBD
 // The message thread's id is an atomic, so isThisTheMessageThread() takes no lock and an
-// audio thread may call it. This backports upstream JUCE a860deed61 (2026-10-02).
+// audio thread may call it. This backports upstream JUCE a860deed61 (2026-10-02), first released in
+// JUCE 9.0.4. This fork is on 8.0.16.
 static_assert (std::atomic<Thread::ThreadID>::is_always_lock_free);
 
 bool MessageManager::isThisTheMessageThread() const noexcept
