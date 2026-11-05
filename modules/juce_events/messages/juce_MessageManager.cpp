@@ -188,20 +188,33 @@ void MessageManager::deregisterBroadcastListener (ActionListener* const listener
 }
 
 //==============================================================================
+// Minimal Audio modification start #58
+// The message thread's id is an atomic, so isThisTheMessageThread() takes no lock and an
+// audio thread may call it. This backports upstream JUCE a860deed61 (2026-10-02), first released in
+// JUCE 9.0.4. This fork is on 8.0.16.
+static_assert (std::atomic<Thread::ThreadID>::is_always_lock_free);
+
 bool MessageManager::isThisTheMessageThread() const noexcept
 {
-    const std::lock_guard<std::mutex> lock { messageThreadIdMutex };
-
-    return Thread::getCurrentThreadId() == messageThreadId;
+    return Thread::getCurrentThreadId() == messageThreadId.load (std::memory_order_acquire);
 }
 
 void MessageManager::setCurrentThreadAsMessageThread()
 {
-    auto thisThread = Thread::getCurrentThreadId();
+    const auto thisThread = Thread::getCurrentThreadId();
 
+    // The mutex is for writers only. Two threads that both claim the message thread at once
+    // would otherwise run the Windows teardown and setup below at the same time.
     const std::lock_guard<std::mutex> lock { messageThreadIdMutex };
 
-    if (std::exchange (messageThreadId, thisThread) != thisThread)
+    // The new id is stored before the Windows work, as upstream does. Only two threads can
+    // read a different answer while that work runs. The new thread is the one doing the work,
+    // so it reads true, which is right: the message window it creates belongs to it. The old
+    // thread reads false at once, so it stops treating itself as the message thread while its
+    // window is torn down. Storing the id after the work would leave the old thread reading
+    // true during the teardown. Storing a placeholder id would make the new thread read false
+    // while it builds its own message window.
+    if (messageThreadId.exchange (thisThread, std::memory_order_acq_rel) != thisThread)
     {
        #if JUCE_WINDOWS
         // This is needed on windows to make sure the message window is created by this thread
@@ -214,8 +227,9 @@ void MessageManager::setCurrentThreadAsMessageThread()
 bool MessageManager::currentThreadHasLockedMessageManager() const noexcept
 {
     auto thisThread = Thread::getCurrentThreadId();
-    return thisThread == messageThreadId || thisThread == threadWithLock.get();
+    return thisThread == messageThreadId.load (std::memory_order_acquire) || thisThread == threadWithLock.get();
 }
+// Minimal Audio modification end #58
 
 bool MessageManager::existsAndIsLockedByCurrentThread() noexcept
 {
