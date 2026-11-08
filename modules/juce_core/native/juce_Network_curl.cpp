@@ -43,11 +43,11 @@ struct CURLSymbols
     CURLcode (*curl_easy_getinfo) (CURL *curl, CURLINFO info, ...);
     CURLMcode (*curl_multi_add_handle) (CURLM *multi_handle, CURL *curl_handle);
     CURLMcode (*curl_multi_cleanup) (CURLM *multi_handle);
-    // Minimal Audio modification start #PR
+    // Minimal Audio modification start #59
     // The wait that cancel() can wake, in place of curl_multi_fdset and select: libcurl 7.68 and later.
     CURLMcode (*curl_multi_poll) (CURLM *multi_handle, struct curl_waitfd extra_fds[], unsigned int extra_nfds, int timeout_ms, int *numfds);
     CURLMcode (*curl_multi_wakeup) (CURLM *multi_handle);
-    // Minimal Audio modification end #PR
+    // Minimal Audio modification end #59
     CURLMsg* (*curl_multi_info_read) (CURLM *multi_handle, int *msgs_in_queue);
     CURLM* (*curl_multi_init) (void);
     CURLMcode (*curl_multi_perform) (CURLM *multi_handle, int *running_handles);
@@ -74,10 +74,10 @@ struct CURLSymbols
         JUCE_INIT_CURL_SYMBOL (curl_easy_getinfo)
         JUCE_INIT_CURL_SYMBOL (curl_multi_add_handle)
         JUCE_INIT_CURL_SYMBOL (curl_multi_cleanup)
-        // Minimal Audio modification start #PR
+        // Minimal Audio modification start #59
         JUCE_INIT_CURL_SYMBOL (curl_multi_poll)
         JUCE_INIT_CURL_SYMBOL (curl_multi_wakeup)
-        // Minimal Audio modification end #PR
+        // Minimal Audio modification end #59
         JUCE_INIT_CURL_SYMBOL (curl_multi_info_read)
         JUCE_INIT_CURL_SYMBOL (curl_multi_init)
         JUCE_INIT_CURL_SYMBOL (curl_multi_perform)
@@ -238,7 +238,7 @@ public:
 
     void cancel()
     {
-        // Minimal Audio modification start #PR
+        // Minimal Audio modification start #59
         // A transfer step waiting in curl_multi_poll is woken, and cleans up as it returns: freeing the multi handle
         // here would pull it from under that wait, and a wait that is not woken lasts curl's timeout, up to a second.
         const ScopedLock lock (cleanupLock);
@@ -251,7 +251,7 @@ public:
 
             return;
         }
-        // Minimal Audio modification end #PR
+        // Minimal Audio modification end #59
 
         cleanup();
     }
@@ -473,7 +473,7 @@ public:
         if (curl_timeo < 0)
             curl_timeo = 980;
 
-        // Minimal Audio modification start #PR
+        // Minimal Audio modification start #59
         // curl_multi_poll waits as select did, with no sockets as well, and cancel() can wake it: a cancel during a
         // connect or a read is heard at once, not when curl's timeout runs out.
         {
@@ -503,7 +503,7 @@ public:
             lastError = -1;
             return;
         }
-        // Minimal Audio modification end #PR
+        // Minimal Audio modification end #59
 
         int still_running = 0;
         int curlRet;
@@ -675,10 +675,10 @@ public:
     bool finished = false;
     size_t skipBytes = 0;
 
-    // Minimal Audio modification start #PR
+    // Minimal Audio modification start #59
     // Both under cleanupLock: whether a transfer step is waiting in curl_multi_poll, and whether cancel() was called.
     bool polling = false, cancelled = false;
-    // Minimal Audio modification end #PR
+    // Minimal Audio modification end #59
 
     //==============================================================================
     // Http POST variables
