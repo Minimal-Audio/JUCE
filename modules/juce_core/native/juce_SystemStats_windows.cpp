@@ -80,7 +80,7 @@ static int findNumberOfPhysicalCores() noexcept
   #pragma intrinsic (__rdtsc)
  #endif
 
-// Minimal Audio modification start #TBD
+// Minimal Audio modification start #60
 // The __cpuid intrinsic on every compiler. Clang's inline asm here saved only ebx, so on x64 cpuid zeroed the upper
 // half of rbx, which the asm told the compiler stays unchanged: a pointer the compiler kept in rbx across the call
 // came back broken (an access violation in getCpuModel under Windows AddressSanitizer).
@@ -90,7 +90,7 @@ static void callCPUID (int result[4], int infoType)
 {
     __cpuid (result, infoType);
 }
-// Minimal Audio modification end #TBD
+// Minimal Audio modification end #60
 
 String SystemStats::getCpuVendor()
 {
