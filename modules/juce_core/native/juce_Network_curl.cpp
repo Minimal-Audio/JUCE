@@ -457,6 +457,9 @@ public:
         if (lastError != CURLE_OK)
             return;
 
+        // Minimal Audio modification start #59
+        // The fd sets and maxfd went with select: curl_multi_poll below needs neither.
+        // Minimal Audio modification end #59
         long curl_timeo;
 
         {
