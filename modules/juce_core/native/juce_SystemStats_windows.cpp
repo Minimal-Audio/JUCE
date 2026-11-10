@@ -80,32 +80,17 @@ static int findNumberOfPhysicalCores() noexcept
   #pragma intrinsic (__rdtsc)
  #endif
 
- #if JUCE_CLANG
-static void callCPUID (int result[4], uint32 type)
-{
-  uint32 la = 0, lb = 0, lc = 0, ld = 0;
+// Minimal Audio modification start #TBD
+// The __cpuid intrinsic on every compiler. Clang's inline asm here saved only ebx, so on x64 cpuid zeroed the upper
+// half of rbx, which the asm told the compiler stays unchanged: a pointer the compiler kept in rbx across the call
+// came back broken (an access violation in getCpuModel under Windows AddressSanitizer).
+ #include <intrin.h>
 
-  asm ("mov %%ebx, %%esi \n\t"
-       "cpuid \n\t"
-       "xchg %%esi, %%ebx"
-       : "=a" (la), "=S" (lb), "=c" (lc), "=d" (ld)
-       : "a" (type)
-      #if JUCE_64BIT
-       , "b" (lb), "c" (lc), "d" (ld)
-      #endif
-       );
-
-  result[0] = (int) la;
-  result[1] = (int) lb;
-  result[2] = (int) lc;
-  result[3] = (int) ld;
-}
- #else
 static void callCPUID (int result[4], int infoType)
 {
     __cpuid (result, infoType);
 }
- #endif
+// Minimal Audio modification end #TBD
 
 String SystemStats::getCpuVendor()
 {
