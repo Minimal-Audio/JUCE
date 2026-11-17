@@ -178,7 +178,15 @@ public:
         statusCode = -1;
         finished = true;
 
-        closeSocket();
+        // Minimal Audio modification start #64
+        // Wakes a connect, poll or recv on another thread without closing the descriptor under it, so its number is
+        // never reused while that call still holds it. The thread using the socket closes it: closeSocket(), or the
+        // destructor.
+        const ScopedLock closeLock (closeSocketLock);
+
+        if (socketHandle >= 0)
+            ::shutdown (socketHandle, SHUT_RDWR);
+        // Minimal Audio modification end #64
     }
 
     //==============================================================================
