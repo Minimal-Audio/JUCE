@@ -282,19 +282,25 @@ public:
     }
 
     //==============================================================================
+    // Minimal Audio modification start #64
     // Atomic, like the fields below that cancel() writes: cancel() may be called from another thread
     // while this one connects or reads, and the reading thread checks them without the lock.
     std::atomic<int> statusCode { 0 };
+    // Minimal Audio modification end #64
 
 private:
     WebInputStream& owner;
     URL url;
+    // Minimal Audio modification start #64
     std::atomic<int> socketHandle { -1 }, levelsOfRedirection { 0 };
+    // Minimal Audio modification end #64
     StringArray headerLines;
     String address, headers;
     MemoryBlock postData;
     int64 contentLength = -1, position = 0;
+    // Minimal Audio modification start #64
     std::atomic<bool> finished { false };
+    // Minimal Audio modification end #64
     const bool addParametersToRequestBody, hasBodyDataToSend;
     int timeOutMs = 0;
     int numRedirectsToFollow = 5;
@@ -302,7 +308,9 @@ private:
     int64 chunkEnd = 0;
     bool isChunked = false, readingChunk = false;
     CriticalSection closeSocketLock, createSocketLock;
+    // Minimal Audio modification start #64
     std::atomic<bool> hasBeenCancelled { false };
+    // Minimal Audio modification end #64
 
     void closeSocket (bool resetLevelsOfRedirection = true)
     {
