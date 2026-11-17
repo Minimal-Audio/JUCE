@@ -190,7 +190,16 @@ public:
 
         // CriticalSection should be available during the callback
         for (auto& fn : callbackStorage)
+        {
+            // Minimal Audio modification start #63
+            // A callback run earlier in this pass can unregister this one, and free what it calls into: a host's
+            // teardown, run from the message queue's callback, frees a VST3 plug-in's run loop.
+            if (! isStillRegistered (fn))
+                continue;
+            // Minimal Audio modification end #63
+
             (*fn)();
+        }
 
         return ! callbackStorage.empty();
     }
@@ -296,6 +305,15 @@ private:
             }
         }
     }
+
+    // Minimal Audio modification start #63
+    bool isStillRegistered (const SharedCallback& callback) const
+    {
+        const ScopedLock sl (lock);
+
+        return std::any_of (callbacks.begin(), callbacks.end(), [&] (const auto& pair) { return pair.second == callback; });
+    }
+    // Minimal Audio modification end #63
 
     std::vector<pollfd>::iterator getPollfd (int fd)
     {
