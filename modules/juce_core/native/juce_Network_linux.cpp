@@ -282,17 +282,19 @@ public:
     }
 
     //==============================================================================
-    int statusCode = 0;
+    // Atomic, like the fields below that cancel() writes: cancel() may be called from another thread
+    // while this one connects or reads, and the reading thread checks them without the lock.
+    std::atomic<int> statusCode { 0 };
 
 private:
     WebInputStream& owner;
     URL url;
-    int socketHandle = -1, levelsOfRedirection = 0;
+    std::atomic<int> socketHandle { -1 }, levelsOfRedirection { 0 };
     StringArray headerLines;
     String address, headers;
     MemoryBlock postData;
     int64 contentLength = -1, position = 0;
-    bool finished = false;
+    std::atomic<bool> finished { false };
     const bool addParametersToRequestBody, hasBodyDataToSend;
     int timeOutMs = 0;
     int numRedirectsToFollow = 5;
@@ -300,7 +302,7 @@ private:
     int64 chunkEnd = 0;
     bool isChunked = false, readingChunk = false;
     CriticalSection closeSocketLock, createSocketLock;
-    bool hasBeenCancelled = false;
+    std::atomic<bool> hasBeenCancelled { false };
 
     void closeSocket (bool resetLevelsOfRedirection = true)
     {
