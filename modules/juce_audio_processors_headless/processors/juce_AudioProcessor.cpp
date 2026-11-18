@@ -53,8 +53,8 @@ AudioProcessor::AudioProcessor (const BusesProperties& ioConfig)
 {
     for (auto& layout : ioConfig.inputLayouts)   createBus (true,  layout);
     for (auto& layout : ioConfig.outputLayouts)  createBus (false, layout);
-
-    updateSpeakerFormatStrings();
+    // Minimal Audio modification start #51
+    // Minimal Audio modification end #51
 }
 
 AudioProcessor::~AudioProcessor()
@@ -779,20 +779,17 @@ bool AudioProcessor::disableNonMainBuses()
     return setBusesLayout (layouts);
 }
 
-// Unfortunately the deprecated getInputSpeakerArrangement/getOutputSpeakerArrangement return
-// references to strings. Therefore we need to keep a copy. Once getInputSpeakerArrangement is
-// removed, we can also remove this function
-void AudioProcessor::updateSpeakerFormatStrings()
+// Minimal Audio modification start #51
+const String AudioProcessor::getInputSpeakerArrangement() const
 {
-    cachedInputSpeakerArrString.clear();
-    cachedOutputSpeakerArrString.clear();
-
-    if (getBusCount (true) > 0)
-        cachedInputSpeakerArrString  = getBus (true,  0)->getCurrentLayout().getSpeakerArrangementAsString();
-
-    if (getBusCount (false) > 0)
-        cachedOutputSpeakerArrString = getBus (false, 0)->getCurrentLayout().getSpeakerArrangementAsString();
+    return getBusCount (true) > 0 ? getBus (true, 0)->getCurrentLayout().getSpeakerArrangementAsString() : String();
 }
+
+const String AudioProcessor::getOutputSpeakerArrangement() const
+{
+    return getBusCount (false) > 0 ? getBus (false, 0)->getCurrentLayout().getSpeakerArrangementAsString() : String();
+}
+// Minimal Audio modification end #51
 
 bool AudioProcessor::applyBusLayouts (const BusesLayout& layouts)
 {
@@ -869,8 +866,8 @@ void AudioProcessor::audioIOChanged (bool busNumberChanged, bool channelNumChang
     cachedTotalIns  = countTotalChannels (inputBuses);
     cachedTotalOuts = countTotalChannels (outputBuses);
 
-    updateSpeakerFormatStrings();
-
+    // Minimal Audio modification start #51
+    // Minimal Audio modification end #51
     if (busNumberChanged)
         numBusesChanged();
 

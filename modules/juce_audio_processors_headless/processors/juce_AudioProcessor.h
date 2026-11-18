@@ -1556,8 +1556,12 @@ public:
     // on its bus and channel layouts and names using the AudioChannelSet and various bus classes.
     [[deprecated]] int getNumInputChannels() const noexcept                   { return getTotalNumInputChannels(); }
     [[deprecated]] int getNumOutputChannels() const noexcept                  { return getTotalNumOutputChannels(); }
-    [[deprecated]] const String getInputSpeakerArrangement() const noexcept   { return cachedInputSpeakerArrString; }
-    [[deprecated]] const String getOutputSpeakerArrangement() const noexcept  { return cachedOutputSpeakerArrString; }
+    // Minimal Audio modification start #51
+    // Made on the call: every processor made them as it was constructed and on each layout change, and a graph of
+    // processors paid for strings only these deprecated getters read.
+    [[deprecated]] const String getInputSpeakerArrangement() const;
+    [[deprecated]] const String getOutputSpeakerArrangement() const;
+    // Minimal Audio modification end #51
     [[deprecated]] virtual const String getInputChannelName  (int channelIndex) const;
     [[deprecated]] virtual const String getOutputChannelName (int channelIndex) const;
     [[deprecated]] virtual bool isInputChannelStereoPair  (int index) const;
@@ -1655,7 +1659,8 @@ private:
     friend class Bus;
     mutable OwnedArray<Bus> inputBuses, outputBuses;
 
-    String cachedInputSpeakerArrString, cachedOutputSpeakerArrString;
+    // Minimal Audio modification start #51
+    // Minimal Audio modification end #51
     int cachedTotalIns = 0, cachedTotalOuts = 0;
 
     AudioProcessorParameterGroup parameterTree;
@@ -1683,7 +1688,8 @@ private:
     void checkForDuplicateGroupIDs (const AudioProcessorParameterGroup&);
 
     AudioProcessorListener* getListenerLocked (int) const noexcept;
-    void updateSpeakerFormatStrings();
+    // Minimal Audio modification start #51
+    // Minimal Audio modification end #51
     void audioIOChanged (bool busNumberChanged, bool channelNumChanged);
     void getNextBestLayout (const BusesLayout&, BusesLayout&) const;
 
