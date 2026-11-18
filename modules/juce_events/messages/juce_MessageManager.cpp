@@ -401,10 +401,13 @@ bool MessageManager::Lock::attemptLockWithMessage (std::unique_lock<std::mutex> 
         return false;
     }
 
+    // Minimal Audio modification start #66
+    // #58 keeps the owner thread in a juce::Atomic, which has no implicit read.
     jassert (depth == 0
              && mm.lockCount == 0
              && mm.lockingMessage == nullptr
-             && mm.threadWithLock == Thread::ThreadID{});
+             && mm.threadWithLock.get() == Thread::ThreadID{});
+    // Minimal Audio modification end #66
 
     depth = 1;
     mm.lockCount = 1;
