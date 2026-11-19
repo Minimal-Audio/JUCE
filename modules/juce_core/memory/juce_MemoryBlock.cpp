@@ -86,7 +86,12 @@ MemoryBlock& MemoryBlock::operator= (const MemoryBlock& other)
     if (this != &other)
     {
         setSize (other.size, false);
-        memcpy (data, other.data, size);
+
+        // Minimal Audio modification start #65
+        // An empty block's data is null, and memcpy's pointers must not be, even for no bytes.
+        if (size > 0)
+            memcpy (data, other.data, size);
+        // Minimal Audio modification end #65
     }
 
     return *this;
@@ -118,8 +123,10 @@ bool MemoryBlock::operator!= (const MemoryBlock& other) const noexcept
 
 bool MemoryBlock::matches (const void* dataToCompare, size_t dataSize) const noexcept
 {
+    // Minimal Audio modification start #65
     return size == dataSize
-            && memcmp (data, dataToCompare, size) == 0;
+            && (size == 0 || memcmp (data, dataToCompare, size) == 0);
+    // Minimal Audio modification end #65
 }
 
 //==============================================================================
@@ -172,7 +179,10 @@ void MemoryBlock::swapWith (MemoryBlock& other) noexcept
 //==============================================================================
 void MemoryBlock::fillWith (uint8 value) noexcept
 {
-    memset (data, (int) value, size);
+    // Minimal Audio modification start #65
+    if (size > 0)
+        memset (data, (int) value, size);
+    // Minimal Audio modification end #65
 }
 
 void MemoryBlock::append (const void* srcData, size_t numBytes)
