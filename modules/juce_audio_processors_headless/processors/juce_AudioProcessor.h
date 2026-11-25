@@ -852,6 +852,17 @@ public:
     */
     void setLatencySamples (int newLatency);
 
+    // Minimal Audio modification start #67
+    /** Stores the latency that getLatencySamples() returns, and tells no listener.
+
+        For a processor that tells its host of a new latency on a thread of its own choosing: it stores the
+        number here wherever it is worked out, and later calls
+        updateHostDisplay (AudioProcessorListener::ChangeDetails().withLatencyChanged (true)) itself. Read and
+        written with no lock, as setLatencySamples() is.
+    */
+    void setLatencySamplesUntold (int newLatency) noexcept      { latencySamples = newLatency; }
+    // Minimal Audio modification end #67
+
     /** Returns the length of the processor's tail, in seconds. */
     virtual double getTailLengthSeconds() const = 0;
 
