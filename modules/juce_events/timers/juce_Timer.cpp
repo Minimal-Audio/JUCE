@@ -339,7 +339,10 @@ private:
     //==============================================================================
     void applicationShuttingDown() final
     {
+        // Wait for the thread to end: a post after this point would race the
+        // MessageManager's destruction, which follows shortly afterwards.
         stopThreadAsync();
+        stopThread (1000);
     }
 
     void stopThreadAsync()
